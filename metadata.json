@@ -1,0 +1,6 @@
+{
+  "name": "BNI 副主席會後會數據 PPT 產生器",
+  "description": "BNI (商業引薦平台) 副主席專用之會後會一鍵簡報與數據看板產生器。輸入會員出席、121 及引薦數據，自動生成 12 頁專業投影簡報、精準數據圖表與 AI 智慧講稿，並提供 PptxGenJS 與 JSON 格式導出。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
