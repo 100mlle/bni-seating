@@ -11,7 +11,8 @@ import {
   Award, 
   Target, 
   ShieldCheck,
-  Briefcase
+  Briefcase,
+  Sparkles
 } from "lucide-react";
 
 interface MemberEditorProps {
@@ -27,6 +28,89 @@ interface MemberEditorProps {
   onChangeWeekTitle: (title: string) => void;
 }
 
+const PREDEFINED_CATEGORIES: Omit<Member, "id">[] = [
+  {
+    name: "張設計",
+    category: "室內設計",
+    role: "建材組專員",
+    attendance: "出席",
+    oneToOne: 3,
+    referrals: 2,
+    visitors: 1,
+    renewal: "已續約"
+  },
+  {
+    name: "林會計",
+    category: "會計記帳稅務",
+    role: "財務諮詢專員",
+    attendance: "出席",
+    oneToOne: 2,
+    referrals: 3,
+    visitors: 0,
+    renewal: "未到期"
+  },
+  {
+    name: "李行銷",
+    category: "品牌行銷包裝",
+    role: "行銷設計專員",
+    attendance: "出席",
+    oneToOne: 2,
+    referrals: 4,
+    visitors: 2,
+    renewal: "已續約"
+  },
+  {
+    name: "王軟體",
+    category: "系統整合研發",
+    role: "數位轉型顧問",
+    attendance: "出席",
+    oneToOne: 4,
+    referrals: 2,
+    visitors: 1,
+    renewal: "未到期"
+  },
+  {
+    name: "陳健康",
+    category: "生技醫療保健",
+    role: "健康管理專員",
+    attendance: "出席",
+    oneToOne: 1,
+    referrals: 1,
+    visitors: 0,
+    renewal: "待追蹤"
+  },
+  {
+    name: "趙法務",
+    category: "商業法律顧問",
+    role: "商標專利律師",
+    attendance: "出席",
+    oneToOne: 2,
+    referrals: 2,
+    visitors: 1,
+    renewal: "未到期"
+  },
+  {
+    name: "許地產",
+    category: "房屋買賣仲介",
+    role: "不動產顧問",
+    attendance: "出席",
+    oneToOne: 3,
+    referrals: 1,
+    visitors: 1,
+    renewal: "需要關懷"
+  },
+  {
+    name: "郭水電",
+    category: "核心水電工程",
+    role: "修繕工程專員",
+    attendance: "出席",
+    oneToOne: 2,
+    referrals: 3,
+    visitors: 0,
+    renewal: "未到期"
+  }
+];
+
 export default function MemberEditor({
   members,
   onChangeMembers,
@@ -41,6 +125,7 @@ export default function MemberEditor({
 }: MemberEditorProps) {
   const [csvText, setCsvText] = useState("");
   const [showCsvHelp, setShowCsvHelp] = useState(false);
+  const [showAutofillPanel, setShowAutofillPanel] = useState(false);
 
   // Sync CSV textarea with state initially
   useEffect(() => {
@@ -361,21 +446,78 @@ export default function MemberEditor({
 
       {/* Main spreadsheet grid */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-rose-800" />
             <h3 className="font-bold text-slate-800 text-lg">
               會員數據明細編輯架構 ({members.length} 位)
             </h3>
           </div>
-          <button
-            onClick={handleAddMember}
-            className="flex items-center gap-1.5 px-4 py-2 bg-rose-800 hover:bg-rose-900 text-white text-sm font-bold rounded-xl shadow-sm hover:shadow transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            新增學長/姊
-          </button>
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <button
+              onClick={() => setShowAutofillPanel(!showAutofillPanel)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border transition cursor-pointer font-sans ${
+                showAutofillPanel 
+                  ? "bg-amber-100 border-amber-300 text-amber-900" 
+                  : "bg-amber-50 hover:bg-amber-100 border-amber-200/60 text-amber-800"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+              🪄 一鍵套用產業範本庫
+            </button>
+            <button
+              onClick={handleAddMember}
+              className="flex items-center gap-1.5 px-4 py-2 bg-rose-800 hover:bg-rose-900 text-white text-sm font-bold rounded-xl shadow-sm hover:shadow transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              新增學長/姊
+            </button>
+          </div>
         </div>
+
+        {/* Predefined Industry Presets Expansion Shelf */}
+        {showAutofillPanel && (
+          <div className="p-4 bg-amber-50/40 border-b border-slate-200/80 space-y-3 font-sans">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-900/80 tracking-wider block">
+                ✦ 點擊下列常用產業直接「快速新增一員」學長姊：
+              </span>
+              <span className="text-[11px] text-amber-700 font-medium hidden md:inline">
+                (名單會自動預載該職位合理的 121 交流、引薦與出席指標數據)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
+              {PREDEFINED_CATEGORIES.map((preset, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    const newId = members.length > 0 ? Math.max(...members.map(m => m.id)) + 1 : 1;
+                    const newMember: Member = {
+                      id: newId,
+                      name: `${preset.name} (${m => m.category || "學長"})`.replace(/\(.*?\)/g, "").trim(), // Cleanup generic template names or use directly
+                      category: preset.category,
+                      role: preset.role,
+                      attendance: preset.attendance,
+                      oneToOne: preset.oneToOne,
+                      referrals: preset.referrals,
+                      visitors: preset.visitors,
+                      renewal: preset.renewal
+                    };
+                    // Use clean preset name base or let them custom edit
+                    newMember.name = `${preset.name}`;
+                    onChangeMembers([...members, newMember]);
+                  }}
+                  className="flex flex-col items-center justify-center p-2 bg-white hover:bg-amber-100/50 hover:border-amber-400 border border-slate-200 rounded-xl transition text-center cursor-pointer group shadow-2xs"
+                  title={`新增「${preset.category}」會員 - ${preset.role}`}
+                >
+                  <Briefcase className="w-4 h-4 text-amber-600 group-hover:scale-110 transition mb-1" />
+                  <span className="text-xs font-semibold text-slate-800 truncate w-full px-1">{preset.category}</span>
+                  <span className="text-[9px] text-slate-400 truncate w-full px-1">{preset.name}｜{preset.role}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -429,13 +571,43 @@ export default function MemberEditor({
 
                       {/* Category */}
                       <td className="px-4 py-2.5">
-                        <input
-                          type="text"
-                          value={m.category}
-                          onChange={(e) => handleUpdateMemberField(m.id, "category", e.target.value)}
-                          className="w-full px-2 py-1 border border-slate-200/65 rounded-lg text-sm focus:border-rose-700 outline-none"
-                          placeholder="例如：智慧家居"
-                        />
+                        <div className="flex items-center gap-1.5 w-full min-w-[200px]">
+                          <input
+                            type="text"
+                            value={m.category}
+                            onChange={(e) => handleUpdateMemberField(m.id, "category", e.target.value)}
+                            className="flex-1 min-w-0 px-2 py-1 border border-slate-200/65 rounded-lg text-sm focus:border-rose-700 outline-none font-sans"
+                            placeholder="例如：智慧家居"
+                          />
+                          <select
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (!val) return;
+                              const preset = PREDEFINED_CATEGORIES.find(p => p.category === val);
+                              if (preset) {
+                                const shouldReplaceName = m.name.startsWith("新會員 ") || !m.name.trim();
+                                handleUpdateMemberField(m.id, "category", preset.category);
+                                if (shouldReplaceName) {
+                                  handleUpdateMemberField(m.id, "name", preset.name);
+                                }
+                                handleUpdateMemberField(m.id, "role", preset.role);
+                                handleUpdateMemberField(m.id, "attendance", preset.attendance);
+                                handleUpdateMemberField(m.id, "oneToOne", preset.oneToOne);
+                                handleUpdateMemberField(m.id, "referrals", preset.referrals);
+                                handleUpdateMemberField(m.id, "visitors", preset.visitors);
+                                handleUpdateMemberField(m.id, "renewal", preset.renewal);
+                              }
+                              e.target.value = ""; // Reset
+                            }}
+                            className="px-1.5 py-1 text-[11px] border border-slate-200 bg-slate-50 hover:bg-rose-50 rounded-lg text-rose-700 font-bold cursor-pointer w-8 shrink-0 text-center outline-none focus:border-rose-700"
+                            title="🪄 快速套用此產業之指標與職位數據"
+                          >
+                            <option value="">🪄</option>
+                            {PREDEFINED_CATEGORIES.map(p => (
+                              <option key={p.category} value={p.category}>{p.category}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
 
                       {/* Role/Role Title */}

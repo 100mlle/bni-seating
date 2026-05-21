@@ -15,7 +15,8 @@ import {
   Play,
   Bookmark,
   FileSpreadsheet,
-  FileJson
+  FileJson,
+  Upload
 } from "lucide-react";
 
 interface SlidesPreviewerProps {
@@ -39,6 +40,7 @@ export default function SlidesPreviewer({
   const [slideScripts, setSlideScripts] = useState<string[]>(defaultSlideScripts);
   const [copied, setCopied] = useState(false);
   const [pptGenerating, setPptGenerating] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Sync with AI notes when they arrive
   useEffect(() => {
@@ -438,15 +440,112 @@ export default function SlidesPreviewer({
     }
   };
 
+  const getSlidesStructuredData = () => {
+    // Generate text content/metrics description for each slide based on statistics
+    const greenNames = stats.green.map(m => m.name).join("、") || "無";
+    const visitorActiveNames = members.filter(m => m.visitors > 0).map(m => `${m.name}(${m.visitors}來賓)`).join(" 、 ") || "無";
+    const absentNames = members.filter(m => m.attendance === "缺席").map(m => m.name).join("、") || "無";
+    const leaveNames = members.filter(m => m.attendance === "請假").map(m => m.name).join("、") || "無";
+    const followRenewalList = members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷").map(m => `${m.name}(${m.category}) - ${m.renewal}`).join("、") || "無";
+    
+    return [
+      {
+        id: 0,
+        title: "第一頁：封面：會後會追蹤",
+        category: "Cover",
+        content: `主體：${weekTitle}。小標：「數據不是責備、亦非監控；數據是用來幫我們及時發掘夥伴瓶頸的溫度計。」`,
+        notes: slideScripts[0] || ""
+      },
+      {
+        id: 1,
+        title: "第二頁：本週數據總覽",
+        category: "Metrics Overview",
+        content: `分會人數: ${stats.total}人 (目標: ${goals.memberTarget})、來賓人數: ${stats.visitors}人 (目標: ${goals.visitorTarget})、121交流: ${stats.oneToOne}次 (目標: ${goals.oneToOneTarget})、引薦成交: ${stats.referrals}張 (目標: ${goals.referralTarget})`,
+        notes: slideScripts[1] || ""
+      },
+      {
+        id: 2,
+        title: "第三頁：目標達成率 (不點名)",
+        category: "KPI Targets",
+        content: `1對1達成率: ${Math.round(stats.oneToOne / (goals.oneToOneTarget || 1) * 100)}%、引薦達成率: ${Math.round(stats.referrals / (goals.referralTarget || 1) * 100)}%、來賓達成率: ${Math.round(stats.visitors / (goals.visitorTarget || 1) * 100)}%`,
+        notes: slideScripts[2] || ""
+      },
+      {
+        id: 3,
+        title: "第四頁：達標表揚行動榜",
+        category: "Honor Roll",
+        content: `綠燈達標(121&引薦雙達標): ${greenNames}。來賓邀約模範: ${visitorActiveNames}`,
+        notes: slideScripts[3] || ""
+      },
+      {
+        id: 4,
+        title: "第五頁：紅黃綠燈健康分佈",
+        category: "Traffic Lights",
+        content: `綠燈: ${stats.green.length}人、黃燈: ${stats.yellow.length}人、紅燈: ${stats.red.length}人`,
+        notes: slideScripts[4] || ""
+      },
+      {
+        id: 5,
+        title: "第六頁：出席與請假追蹤",
+        category: "Attendance Tracker",
+        content: `分會出席率: ${100 - stats.absenceRate}%。請假名單: ${leaveNames}。缺席名單: ${absentNames}`,
+        notes: slideScripts[5] || ""
+      },
+      {
+        id: 6,
+        title: "第七頁：來賓到申請書轉換 funnel",
+        category: "Visitor Funnel",
+        content: `來賓總數: ${stats.visitors}人。預期申請書目標: ${goals.applicationTarget}張`,
+        notes: slideScripts[6] || ""
+      },
+      {
+        id: 7,
+        title: "第八頁：續約關懷 90 天提示",
+        category: "Renewal Forecast",
+        content: `已完成續約: ${stats.renewed}人。近期需追蹤與關懷名單: ${followRenewalList}`,
+        notes: slideScripts[7] || ""
+      },
+      {
+        id: 8,
+        title: "第九頁：會委會成員分工落實",
+        category: "Committee Alignment",
+        content: committeeText,
+        notes: slideScripts[8] || ""
+      },
+      {
+        id: 9,
+        title: "第十頁：副主席策略建言",
+        category: "VP Counsel",
+        content: `口號：「開口要溫度、出手要專業；公開看楷模、私下看託底。」`,
+        notes: slideScripts[9] || ""
+      },
+      {
+        id: 10,
+        title: "第十一頁：下週三大核心行動",
+        category: "Strategic Actions",
+        content: "1. 121指標推進：各組內循環，下週每人至少安排1場精確對位的121商業訪談。\n2. 來賓帶入精準化：結合核心組別主題日，定點引流。\n3. ROI面談關懷啟動：續約與數據專員排程90天輔導面談。",
+        notes: slideScripts[10] || ""
+      },
+      {
+        id: 11,
+        title: "第十二頁：結尾：溫度托底共識",
+        category: "Outro Motto",
+        content: "「數字只是結果，溫度決定結果！」攜手打造健康、有溫度且高產引薦的分會。",
+        notes: slideScripts[11] || ""
+      }
+    ];
+  };
+
   const exportToJson = () => {
     try {
       const exportData = {
         weekTitle,
         stage,
         goals,
+        committeeText,
         slideDeckMeta,
         slideScripts,
-        committeeText,
+        slides: getSlidesStructuredData(),
         membersCount: members.length,
         exportedAt: new Date().toISOString()
       };
@@ -465,6 +564,42 @@ export default function SlidesPreviewer({
       console.error(e);
       alert("簡報數據 JSON 導出失敗，請重試！");
     }
+  };
+
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        
+        let importedScripts: string[] | null = null;
+        if (Array.isArray(json.slideScripts) && json.slideScripts.length === 12) {
+          importedScripts = json.slideScripts;
+        } else if (Array.isArray(json.slides) && json.slides.length === 12) {
+          importedScripts = json.slides.map((s: any) => s.notes || "");
+        } else if (Array.isArray(json.slides)) {
+          const notes = json.slides.map((s: any) => s.notes || "");
+          while (notes.length < 12) notes.push("");
+          importedScripts = notes.slice(0, 12);
+        }
+
+        if (importedScripts) {
+          setSlideScripts(importedScripts);
+          setSuccessMessage("成功匯入簡報數據！已成功載入您的 12 頁簡報講稿演辭與簡報備忘錄。");
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } else {
+          alert("匯入格式不正確：找不到符合條件的 12 頁簡報內容或備忘錄！");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("讀取 JSON 檔案失敗，格式不合法！");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ""; // Clear file
   };
 
   return (
@@ -497,8 +632,29 @@ export default function SlidesPreviewer({
             <FileJson className="w-3.5 h-3.5 text-slate-500" />
             導出簡報數據 .json
           </button>
+
+          <label className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg shadow-2xs transition w-full sm:w-auto cursor-pointer border border-rose-200 font-sans">
+            <Upload className="w-3.5 h-3.5 text-rose-700 font-bold" />
+            <span>導入簡報數據 .json</span>
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleImportJson}
+              className="hidden"
+            />
+          </label>
         </div>
       </div>
+
+      {successMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between shadow-2xs">
+          <span className="font-semibold flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            {successMessage}
+          </span>
+          <button onClick={() => setSuccessMessage(null)} className="text-emerald-500 hover:text-emerald-700 font-bold ml-2 cursor-pointer">✕</button>
+        </div>
+      )}
 
       {/* Main presentation console */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
