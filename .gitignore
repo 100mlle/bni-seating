@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+# 本機資料不上傳（Railway 用 Volume 儲存）
+bni_data.db
+weekly-data/*.xls
+weekly-data/*.xlsx
+weekly-data/*.csv
+# 雜項
+*.docx
+截圖*
+BNi*

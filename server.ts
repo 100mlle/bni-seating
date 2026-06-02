@@ -1,176 +1,364 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import path from "path";
+import fs from "fs";
+import XLSX from "xlsx";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
+import { historyDb, goalsDb } from "./db";
 
 dotenv.config();
 
+const DATA_DIR = process.env.DATA_DIR || process.cwd();
+const WEEKLY_DATA_DIR = path.join(DATA_DIR, "weekly-data");
+const HOME_DIR = process.env.HOME || process.env.USERPROFILE || "";
+
+// ── 允許匯入紅綠燈 Excel 的安全目錄白名單 ──────────────────────────
+const SAFE_IMPORT_DIRS = [
+  WEEKLY_DATA_DIR,
+  path.join(HOME_DIR, "Downloads"),
+  path.join(HOME_DIR, "Desktop"),
+].map(d => path.resolve(d));
+
+function isSafeImportPath(filepath: string): boolean {
+  const resolved = path.resolve(filepath);
+  return SAFE_IMPORT_DIRS.some(safe => resolved.startsWith(safe + path.sep) || resolved === safe);
+}
+
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || "3000");
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
-// API Endpoint for AI-powered KPI & Slide Analysis
-app.post("/api/analyze-kpi", async (req, res) => {
+// ── 簡易 Token 認證（選用）──────────────────────────────────────────
+// 在 .env 設定 ACCESS_TOKEN=你的密碼 即可啟用
+// 啟用後所有寫入 API 需帶 Authorization: Bearer <token>
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!ACCESS_TOKEN) return next(); // 未設定則不啟用
+  const auth = req.headers["authorization"];
+  if (!auth || auth !== `Bearer ${ACCESS_TOKEN}`) {
+    return res.status(401).json({ error: "未授權" });
+  }
+  next();
+}
+
+// ── AI 分析速率限制（每分鐘最多 5 次）──────────────────────────────
+const aiCallTimestamps: number[] = [];
+function aiRateLimit(req: Request, res: Response, next: NextFunction) {
+  const now = Date.now();
+  const oneMinuteAgo = now - 60_000;
+  // 清除一分鐘前的記錄
+  while (aiCallTimestamps.length && aiCallTimestamps[0] < oneMinuteAgo) {
+    aiCallTimestamps.shift();
+  }
+  if (aiCallTimestamps.length >= 5) {
+    return res.status(429).json({ success: false, error: "請求過於頻繁，請稍後再試" });
+  }
+  aiCallTimestamps.push(now);
+  next();
+}
+
+// ── 統一錯誤回應（不洩漏內部訊息）──────────────────────────────────
+function serverError(res: Response, e: unknown, userMsg = "伺服器錯誤") {
+  console.error("[BNI Server Error]", e);
+  res.status(500).json({ error: userMsg });
+}
+
+// ── AI 分析 ──────────────────────────────────────────────────────────
+app.post("/api/analyze-kpi", aiRateLimit, async (req, res) => {
   try {
-    const {
-      weekTitle,
-      stage,
-      committeeText,
-      goals,
-      members,
-      summary,
-    } = req.body;
+    const { weekTitle, stage, committeeText, goals, members, summary } = req.body;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey || apiKey.trim() === "" || apiKey === "YOUR_ANTHROPIC_API_KEY") {
       return res.status(200).json({
         success: false,
         api_key_missing: true,
-        message: "Gemini API key is missing. Please add your GEMINI_API_KEY in the Settings > Secrets panel to unlock the full AI Diagnostic and custom Speaking notes!",
+        message: "請在 .env 檔案中設定 ANTHROPIC_API_KEY",
       });
     }
 
-    // Lazy load the GoogleGenAI instance to prevent crash on startup if key is bad
-    const ai = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+    const client = new Anthropic({ apiKey });
 
-    const userPrompt = `
-You are an expert BNI Vice President and executive Chapter Growth Coach. 
-Analyze the following BNI Chapter stats and produce a structured advisory report.
+    const prompt = `你是一位 BNI 副主席與分會成長教練專家。請根據以下分會本週 PALMS 數據，產生一份完整的會後會分析報告。
 
-CHAPTER DECK CONTEXT:
-- Week Title: ${weekTitle}
-- Management Stage: ${stage} (Stage Guidelines: stage1=Only reveal overall progress, do not name individuals. stage2=Celebrate winners publicly, keep underperformers private. stage3=Continuous underperformance gets private 1-on-1 membership committee help.)
-- Committee Assignment: 
-${committeeText}
+【分會基本資訊】
+- 週次標題：${weekTitle}
+- 管理階段：${stage}
+- 委員會幹部：${committeeText}
 
-- Chapter Core Targets:
-  * Member Count: ${goals.memberTarget}
-  * Weekly Visitors: ${goals.visitorTarget}
-  * Submission of Applications: ${goals.applicationTarget}
-  * 1-to-1 Meetings (121) Total: ${goals.oneToOneTarget}
-  * Referral Slips Total: ${goals.referralTarget}
-  * Absence Warning Threshold: ${goals.absenceWarningRate}%
+【本週目標 vs 實際】
+- 會員總數：${summary.memberCount} 人
+- 來賓：${summary.visitors} 人（目標 ${goals.visitorTarget}）
+- 121 一對一：${summary.oneToOne} 次（目標 ${goals.oneToOneTarget}）
+- 提供引薦（內部+外部）：${summary.referralsGiven} 張（目標 ${goals.referralTarget}）
+- 缺席（A）：${summary.absentCount} 人
+- 病假（M）：${summary.medicalCount} 人
+- 代理人（S）：${summary.substituteCount} 人
+- 遲到（L）：${summary.lateCount} 人
+- 總交易價值：NT$${summary.totalTransactionValue?.toLocaleString()}
+- 總 CEU：${summary.totalCeu} 單位
+- 缺席率：${summary.absenceRate}%
 
-- Chapter Actual This Week:
-  * Total Members: ${summary.memberCount}
-  * Actual Visitors: ${summary.visitors}
-  * Total 1-to-1s (121) completed: ${summary.oneToOne}
-  * Total Referrals submitted: ${summary.referrals}
-  * Absent Members count: ${summary.absentCount}
-  * Members on Leave count: ${summary.leaveCount}
-  * Chapter Absence Rate: ${summary.absenceRate}%
-
-- Detailed Member Lists:
+【各會員詳細數據】
 ${JSON.stringify(members, null, 2)}
 
-TASK:
-1. Evaluate Chapter Health Score (0-100) based on target vs. actual achievement.
-2. Formulate a professional chapter Executive Summary analyzing this week's business activity, focusing on members' achievements and area for collaboration.
-3. For members in the "RED" light (low 121 and low referrals) or who are Absent, provide constructive, positive mentoring recommendations (private action blueprint, no public shaming) grouped by their industry categories to see if power teams can help.
-4. Analyze the Chapter's Power Team synergies (e.g. construction, marketing, wellness) and give strategic tips.
-5. Generate speaking outlines or talking points (講稿) for each of the 12 slides. Make the scripts sound highly professional, encouraging, authoritative, and exactly in the language of a BNI chapter Vice President (using energetic, positive BNI culture terms such as "Givers Gain" 樂施者得, "coaching" 輔導, "referrals" 引薦, "support" 協助, "not blaming" 協助看見問題).
-Each of the 12 slide scripts MUST speak specifically to the stats relevant to that slide:
-   - Slide 1 (封面): Welcoming tone, setting the stage.
-   - Slide 2 (本週總覽): High-level overview of membership, visitors, 121s, and referrals.
-   - Slide 3 (目標達成率): Focus on overall goals, highlight success ratios.
-   - Slide 4 (121/引薦單行動榜): Publicly congratulate the green members who solved KPIs.
-   - Slide 5 (紅黃綠燈狀態分佈): Explain the distribution. Highlight that "Red is just a indicator that someone needs help, and our committee will private-massage them with training resources".
-   - Slide 6 (出席率追蹤): Highlight stability and business presence.
-   - Slide 7 (來賓到申請轉換漏斗): Talk about high-quality visitors, inviting visitors with intent.
-   - Slide 8 (續約與關懷名單): Gentle upcoming renewal tracking, stressing support.
-   - Slide 9 (會員委員會分工): Action assignments to the specialists (attendance, visitors, renewal, referrals).
-   - Slide 10 (副主席建言): Wise, cultural advisory words. "Data is not blame, it's visibility".
-   - Slide 11 (下週三件行動): List three vital tasks to boost production.
-   - Slide 12 (結尾共識): Highly motivational call-to-action to leave a lasting impact.
+【KPI 個人標準】
+- 個人每週 121 門檻：${goals.kpi121PerMember} 次
+- 個人每週引薦門檻：${goals.kpiReferralPerMember} 張
+- 個人每週 CEU 門檻：${goals.kpiCeuPerMember} 單位
+- 六個月 A+S 不超過 3 次
 
-Ensure that the response is returned in raw JSON conforming exactly to the responseSchema provided.
-`;
+請用繁體中文回答，遵循 BNI「公開表揚、私下輔導、數字非責備」原則。
+必須嚴格以 JSON 格式回覆，包含以下欄位：
+{
+  "chapterHealthScore": <0-100的整數>,
+  "executiveSummary": "<本週分會綜合診斷，200字以內>",
+  "coachingAdvice": [
+    {
+      "memberName": "<姓名>",
+      "category": "<產業別>",
+      "issue": "<問題指標>",
+      "actionPlan": "<暖心私下輔導建議，具體可行>"
+    }
+  ],
+  "powerTeamTraction": "<Power Team 產業協同建言>",
+  "slideSpeakingNotes": ["<投影片1講稿>", "...共12個，每個150字以內"],
+  "actionItems": ["<行動1>", "<行動2>", "<行動3>"]
+}`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            chapterHealthScore: { 
-              type: Type.INTEGER, 
-              description: "A score from 0 to 100 representing Chapter health" 
-            },
-            executiveSummary: { 
-              type: Type.STRING, 
-              description: "Detailed analysis of chapter's metrics, highlights, and culture this week." 
-            },
-            coachingAdvice: {
-              type: Type.ARRAY,
-              description: "Mentor suggestions for members categorized as red or absent",
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                   memberName: { type: Type.STRING },
-                   category: { type: Type.STRING },
-                   issue: { type: Type.STRING },
-                   actionPlan: { type: Type.STRING, description: "A highly supportive private 1-to-1 action step, focused on connection and help." }
-                },
-                required: ["memberName", "category", "issue", "actionPlan"]
-              }
-            },
-            powerTeamTraction: { 
-              type: Type.STRING, 
-              description: "Practical suggestions for building power teams in the chapter based on member categories." 
-            },
-            slideSpeakingNotes: {
-              type: Type.ARRAY,
-              description: "Array of exactly 12 strings, where element 0 is slide 1 script, element 1 is slide 2 script... up to slide 12.",
-              items: {
-                type: Type.STRING
-              }
-            },
-            actionItems: {
-              type: Type.ARRAY,
-              description: "Array of exactly 3 crisp action points for next week",
-              items: { type: Type.STRING }
-            }
-          },
-          required: [
-            "chapterHealthScore", 
-            "executiveSummary", 
-            "coachingAdvice", 
-            "powerTeamTraction", 
-            "slideSpeakingNotes", 
-            "actionItems"
-          ]
-        }
-      }
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
     });
 
-    const parsedData = JSON.parse(response.text || "{}");
-    return res.json({
-      success: true,
-      api_key_missing: false,
-      data: parsedData
-    });
+    const textContent = message.content.find(c => c.type === "text");
+    if (!textContent || textContent.type !== "text") {
+      throw new Error("Claude 未回傳文字內容");
+    }
+
+    const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("無法解析 Claude 回傳的 JSON");
+    const parsedData = JSON.parse(jsonMatch[0]);
+
+    return res.json({ success: true, api_key_missing: false, data: parsedData });
 
   } catch (error: any) {
-    console.error("Gemini API Error in server.ts:", error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || "Internal server error analyzing KPI data"
-    });
+    return res.status(500).json({ success: false, error: "AI 分析失敗，請稍後再試" });
   }
 });
 
-// Configure Vite or Static Assets serving based on environment
+// ── 分會目標 ─────────────────────────────────────────────────────────
+app.get("/api/goals", (_req, res) => {
+  try {
+    res.json(goalsDb.get() ?? null);
+  } catch (e) { serverError(res, e); }
+});
+
+app.post("/api/goals", requireAuth, (req, res) => {
+  try {
+    goalsDb.save(req.body);
+    res.json({ ok: true });
+  } catch (e) { serverError(res, e); }
+});
+
+// ── 歷史週次 ─────────────────────────────────────────────────────────
+app.get("/api/history", (_req, res) => {
+  try {
+    res.json(historyDb.getAll());
+  } catch (e) { serverError(res, e); }
+});
+
+app.post("/api/history", requireAuth, (req, res) => {
+  try {
+    historyDb.save(req.body);
+    res.json({ ok: true });
+  } catch (e) { serverError(res, e); }
+});
+
+app.get("/api/history/accumulated", (_req, res) => {
+  try {
+    res.json(historyDb.getAccumulatedStats());
+  } catch (e) { serverError(res, e); }
+});
+
+app.get("/api/history/trend", (req, res) => {
+  try {
+    // 修復：驗證 weeks 為正整數，防止 NaN / 負數
+    const raw = parseInt(String(req.query.weeks || "8"), 10);
+    const weeks = (!isNaN(raw) && raw > 0) ? Math.min(raw, 26) : 8;
+    const records = historyDb.getAll().slice(0, weeks).reverse();
+    res.json(records.map(r => ({
+      date: r.date,
+      weekTitle: r.weekTitle,
+      members: r.members,
+    })));
+  } catch (e) { serverError(res, e); }
+});
+
+app.post("/api/history/accumulated/seed", requireAuth, (req, res) => {
+  try {
+    historyDb.saveSeedStats(req.body);
+    res.json({ ok: true });
+  } catch (e) { serverError(res, e); }
+});
+
+app.delete("/api/history/:id", requireAuth, (req, res) => {
+  try {
+    // 驗證 id 格式（week-{timestamp}）
+    const id = req.params.id;
+    if (!/^week-\d+$/.test(id)) {
+      return res.status(400).json({ error: "無效的記錄 ID" });
+    }
+    historyDb.delete(id);
+    res.json({ ok: true });
+  } catch (e) { serverError(res, e); }
+});
+
+// ── 匯出備份 ─────────────────────────────────────────────────────────
+app.get("/api/export", requireAuth, (_req, res) => {
+  try {
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+      records: historyDb.getAll(),
+      accumulatedSeed: historyDb.getSeedStats(),
+      goals: goalsDb.get(),
+    };
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Disposition", `attachment; filename="BNI_長溙_備份_${date}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    res.json(exportData);
+  } catch (e) { serverError(res, e); }
+});
+
+// ── 官方紅綠燈 Excel 匯入 ─────────────────────────────────────────────
+app.post("/api/redgreen/import", requireAuth, (req, res) => {
+  try {
+    const { filepath } = req.body as { filepath: string };
+    if (!filepath || typeof filepath !== "string") {
+      return res.status(400).json({ error: "請提供檔案路徑" });
+    }
+    // 安全檢查：路徑必須在白名單目錄內
+    if (!isSafeImportPath(filepath)) {
+      return res.status(403).json({ error: "不允許的檔案路徑，請將檔案放到 Downloads 或 weekly-data 目錄" });
+    }
+    // 副檔名必須是 xlsx/xls
+    if (!/\.(xlsx|xls)$/i.test(filepath)) {
+      return res.status(400).json({ error: "只接受 .xlsx 或 .xls 檔案" });
+    }
+    if (!fs.existsSync(filepath)) {
+      return res.status(400).json({ error: "找不到檔案" });
+    }
+    const count = historyDb.importFromRedGreenExcel(filepath);
+    res.json({ success: true, count });
+  } catch (e) { serverError(res, e, "匯入失敗"); }
+});
+
+// ── weekly-data 資料夾 ────────────────────────────────────────────────
+app.get("/api/weekly-data/files", (_req, res) => {
+  try {
+    if (!fs.existsSync(WEEKLY_DATA_DIR)) fs.mkdirSync(WEEKLY_DATA_DIR, { recursive: true });
+    const files = fs.readdirSync(WEEKLY_DATA_DIR)
+      .filter(f => /\.(csv|tsv|txt|xlsx|xls)$/i.test(f))
+      .map(f => {
+        const stat = fs.statSync(path.join(WEEKLY_DATA_DIR, f));
+        return { name: f, size: stat.size, mtime: stat.mtime.toISOString() };
+      })
+      .sort((a, b) => b.mtime.localeCompare(a.mtime));
+    res.json(files);
+  } catch (e) { serverError(res, e); }
+});
+
+app.get("/api/weekly-data/files/:filename", (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    // 確認解析後路徑確實在 WEEKLY_DATA_DIR 內（防止路徑穿越）
+    const filepath = path.resolve(WEEKLY_DATA_DIR, filename);
+    if (!filepath.startsWith(path.resolve(WEEKLY_DATA_DIR) + path.sep)) {
+      return res.status(403).json({ error: "不允許的路徑" });
+    }
+    if (!fs.existsSync(filepath)) return res.status(404).json({ error: "找不到檔案" });
+
+    let content: string;
+    if (/\.(xlsx|xls)$/i.test(filename)) {
+      const wb = XLSX.readFile(filepath);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_csv(ws, { FS: "\t" });
+      // BNI Connect PALMS 報告格式：找到含「姓氏」的真正欄位標題行，略去前置說明列
+      const lines = raw.split("\n");
+      const headerIdx = lines.findIndex(l => {
+        const cols = l.split("\t").map(c => c.trim());
+        return cols.includes("姓氏") || cols.includes("名字");
+      });
+      content = headerIdx >= 0 ? lines.slice(headerIdx).join("\n") : raw;
+    } else {
+      content = fs.readFileSync(filepath, "utf-8");
+    }
+    res.json({ name: filename, content });
+  } catch (e) { serverError(res, e, "讀取檔案失敗"); }
+});
+
+// ── Seed 初始化 ───────────────────────────────────────────────────────
+function seedHistoricalDataIfNeeded() {
+  if (historyDb.hasSeed()) return;
+  const raw = [
+    ["陳宜寧",  22, 0, 0, 20, 427383,   11,  88, 120],
+    ["許文婉",  22, 0, 1, 19, 1537494,   7,  55,  71],
+    ["劉峻嘉",  22, 0, 0, 26, 1293826,   6, 102, 111],
+    ["黃芯慧",  22, 0, 0, 43,   79287,   6, 111, 106],
+    ["簡廷桓",  22, 1, 1, 18, 2247454,   5,  75, 105],
+    ["曾郁婷",  22, 0, 1, 10,  823296,   2,  67,  54],
+    ["周宥達",  22, 0, 3, 19, 1224181,   1,  49,  48],
+    ["王湘慈",  22, 0, 2, 20,  890485,   0,  47,  50],
+    ["李惠暄",  22, 0, 2, 18,  421910,   3,  57,  61],
+    ["許祥泰",  22, 0, 0, 18,  501386,   2,  85,  94],
+    ["廖翊如",  22, 0, 1, 28,  477012,   2,  63, 152],
+    ["陳政華",  22, 0, 0, 30,  105765,   3,  71,  59],
+    ["崔永疇",  22, 0, 0,  6,    7353,   3,  58,  35],
+    ["劉兆矩",  22, 0, 0, 13,   21880,   3,  62,  63],
+    ["劉家豪",  22, 0, 0, 36,  158711,   2,  93,  53],
+    ["林彥合",  22, 0, 0, 34,  148889,   1,  88,  55],
+    ["程韋銘",  22, 0, 1, 41,   27535,   1, 145,  75],
+    ["劉洛安",  22, 0, 1, 14,  213220,   1,  64,  51],
+    ["李冠樺",  21, 0, 1, 33,   38965,   0,  66,  47],
+    ["譚宇芩",  22, 2, 3, 21,  847789,   0,  89,  46],
+    ["陳裔潔",  14, 0, 1,  7,  747380,   2,  12,  21],
+    ["黃信樺",  22, 1, 1, 26,   50434,   0,  55, 100],
+    ["李孟涵",   6, 0, 0, 10,   25195,   0,   2,  14],
+    ["楊尚恩",  22, 2, 4,  0, 6162106,   0,  56,  31],
+    ["周昆胤",  22, 3, 4,  7,  425791,   0,  43,  43],
+    ["洪瑋君",  22, 3, 5,  3,  888260,   0,  28,  38],
+  ] as const;
+
+  const seed = raw.map(([memberName, weeksRecorded, absenceCount, asRuleCount, totalCeu, totalTransactionValue, totalVisitors, total121, totalRef]) => {
+    const wk = weeksRecorded as number;
+    const abs = absenceCount as number;
+    const combined = asRuleCount as number;
+    const absRule = Math.min(abs, combined);
+    const subRule = combined - absRule;
+    return {
+      memberName: memberName as string,
+      weeksRecorded: wk,
+      absenceCount: abs,
+      absenceRuleCount: absRule,
+      substituteRuleCount: subRule,
+      lateCount: 0,  // 歷史 seed 無遲到資料，從本屆週記錄累積
+      totalCeu: totalCeu as number,
+      totalTransactionValue: totalTransactionValue as number,
+      avgVisitorsPerMonth: wk > 0 ? ((totalVisitors as number) / wk) * 4 : 0,
+      avg121PerWeek: wk > 0 ? (total121 as number) / wk : 0,
+      avgRefPerWeek: wk > 0 ? (totalRef as number) / wk : 0,
+    };
+  });
+
+  historyDb.saveSeedStats(seed);
+  console.log(`✅ 已載入 ${seed.length} 位會員的 6 個月歷史 seed 資料`);
+}
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -178,16 +366,33 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+    // 明確的 HTML fallback（Vite middleware mode 需要）
+    app.get("*", async (req, res, next) => {
+      try {
+        const template = fs.readFileSync(path.resolve("index.html"), "utf-8");
+        const html = await vite.transformIndexHtml(req.url, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(html);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  seedHistoricalDataIfNeeded();
+
+  // Railway 需要監聽 0.0.0.0；本機開發維持 127.0.0.1
+  const host = process.env.SERVER_HOST || (process.env.RAILWAY_ENVIRONMENT ? "0.0.0.0" : "127.0.0.1");
+  app.listen(PORT, host, () => {
+    console.log(`✅ BNI 商務平台啟動：http://localhost:${PORT}`);
+    if (ACCESS_TOKEN) {
+      console.log(`🔒 Token 認證已啟用`);
+    }
   });
 }
 

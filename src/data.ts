@@ -1,70 +1,123 @@
 import { Member, ChapterGoals } from "./types";
 
+// ── 本會期設定（第13屆）────────────────────────────────────────────
+export const CHAPTER_PERIOD = {
+  start: "2026-04-10",
+  end:   "2026-09-30",
+  totalMeetings: 23,           // 第一次例會 4/10，共 23 次
+  holidayDates: [
+    "2026-05-01", // 勞動節
+    "2026-06-19", // 端午節（農曆 5/5）
+    "2026-09-25", // 中秋節（農曆 8/15）
+  ],
+} as const;
+
+// 計算指定日期是第幾次例會（從會期開始的週五，扣除假日）
+export function meetingNumberForDate(dateStr: string): number {
+  const target = new Date(dateStr + "T23:59:59");
+  const start = new Date(CHAPTER_PERIOD.start);
+  const holidays = new Set<string>(CHAPTER_PERIOD.holidayDates);
+  let count = 0;
+  const d = new Date(start);
+  const dayOfWeek = d.getDay();
+  const daysToFri = dayOfWeek <= 5 ? 5 - dayOfWeek : 6;
+  d.setDate(d.getDate() + daysToFri);
+  while (d <= target) {
+    const iso = d.toISOString().split("T")[0];
+    if (!holidays.has(iso)) count++;
+    d.setDate(d.getDate() + 7);
+  }
+  return Math.min(count, CHAPTER_PERIOD.totalMeetings);
+}
+
+// 計算今天是第幾次例會
+export function currentMeetingNumber(): number {
+  const today = new Date().toISOString().split("T")[0];
+  return meetingNumberForDate(today);
+}
+
+// 長溙分會 第十三屆 2026.04.01 ~ 2026.09.30
 export const defaultMembers: Member[] = [
-  { id: 1, name: "王小明", category: "水電工程", role: "會員委員會", attendance: "出席", oneToOne: 2, referrals: 3, visitors: 1, renewal: "已續約" },
-  { id: 2, name: "陳小華", category: "室內設計", role: "夥伴會員", attendance: "出席", oneToOne: 1, referrals: 2, visitors: 0, renewal: "未到期" },
-  { id: 3, name: "李大明", category: "木作工程", role: "會員委員會", attendance: "缺席", oneToOne: 0, referrals: 0, visitors: 0, renewal: "未到期" },
-  { id: 4, name: "林小美", category: "窗飾規劃", role: "夥伴會員", attendance: "出席", oneToOne: 3, referrals: 1, visitors: 1, renewal: "已續約" },
-  { id: 5, name: "劉工程", category: "冷凍空調", role: "會員委員會", attendance: "出席", oneToOne: 1, referrals: 1, visitors: 2, renewal: "待追蹤" },
-  { id: 6, name: "張老闆", category: "油漆工程", role: "夥伴會員", attendance: "出席", oneToOne: 0, referrals: 1, visitors: 0, renewal: "未到期" },
-  { id: 7, name: "黃設計師", category: "商空設計", role: "夥伴會員", attendance: "請假", oneToOne: 2, referrals: 2, visitors: 1, renewal: "已續約" },
-  { id: 8, name: "趙鋼構", category: "鐵件鋼構", role: "夥伴會員", attendance: "出席", oneToOne: 2, referrals: 1, visitors: 0, renewal: "未到期" },
-  { id: 9, name: "孫軟裝", category: "軟裝佈置", role: "夥伴會員", attendance: "出席", oneToOne: 1, referrals: 2, visitors: 0, renewal: "已續約" },
-  { id: 10, name: "周智控", category: "智慧家居", role: "輔導專員", attendance: "出席", oneToOne: 3, referrals: 4, visitors: 3, renewal: "已續約" }
+  { id: 1,  firstName: "許", lastName: "文婉", category: "零售批發",      role: "會員委員會",   palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 11, referralsReceivedExternal: 4, visitors: 0, oneToOne: 4,  transactionValue: 2878,  ceu: 2, renewal: "已續約" },
+  { id: 2,  firstName: "崔", lastName: "永疇", category: "平面設計",      role: "會員委員會",   palms: "P", referralsGivenInternal: 1, referralsGivenExternal: 2, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 2,  transactionValue: 0,     ceu: 0, renewal: "未到期" },
+  { id: 3,  firstName: "劉", lastName: "兆矩", category: "御用推拿師",    role: "會員委員會",   palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 1,  referralsReceivedExternal: 1, visitors: 0, oneToOne: 4,  transactionValue: 610,   ceu: 2, renewal: "已續約" },
+  { id: 4,  firstName: "譚", lastName: "宇芩", category: "眼鏡銷售業",    role: "夥伴會員",     palms: "A", referralsGivenInternal: 0, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 1,  transactionValue: 0,     ceu: 0, renewal: "待追蹤" },
+  { id: 5,  firstName: "簡", lastName: "廷桓", category: "人力仲介",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 1, referralsGivenExternal: 2, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 4,  transactionValue: 11100, ceu: 0, renewal: "未到期" },
+  { id: 6,  firstName: "李", lastName: "孟涵", category: "統包工程",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 1, referralsGivenExternal: 1, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 9,  transactionValue: 3612,  ceu: 4, renewal: "未到期" },
+  { id: 7,  firstName: "陳", lastName: "宜寧", category: "臼井靈氣",      role: "秘書/財務",    palms: "P", referralsGivenInternal: 4, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 10, transactionValue: 6280,  ceu: 2, renewal: "未到期" },
+  { id: 8,  firstName: "楊", lastName: "尚恩", category: "醫療行銷",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 0, referralsGivenExternal: 2, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 1,  transactionValue: 75600, ceu: 0, renewal: "未到期" },
+  { id: 9,  firstName: "周", lastName: "昆胤", category: "窗簾業",        role: "夥伴會員",     palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 2,  transactionValue: 129,   ceu: 1, renewal: "未到期" },
+  { id: 10, firstName: "黃", lastName: "芯慧", category: "整體造型",      role: "主席",         palms: "P", referralsGivenInternal: 4, referralsGivenExternal: 0, referralsReceivedInternal: 1,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 7,  transactionValue: 200,   ceu: 4, renewal: "已續約" },
+  { id: 11, firstName: "黃", lastName: "信樺", category: "保健食品",      role: "成長協調員",   palms: "P", referralsGivenInternal: 1, referralsGivenExternal: 1, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 4,  transactionValue: 4799,  ceu: 0, renewal: "未到期" },
+  { id: 12, firstName: "李", lastName: "冠樺", category: "家排塔羅",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 1, referralsReceivedInternal: 1,  referralsReceivedExternal: 1, visitors: 0, oneToOne: 6,  transactionValue: 3200,  ceu: 2, renewal: "未到期" },
+  { id: 13, firstName: "周", lastName: "宥達", category: "拆除工程",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 3, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 3,  transactionValue: 3000,  ceu: 4, renewal: "未到期" },
+  { id: 14, firstName: "林", lastName: "彥合", category: "有機清潔用品",  role: "導師協調員",   palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 7,  transactionValue: 0,     ceu: 2, renewal: "未到期" },
+  { id: 15, firstName: "陳", lastName: "政華", category: "花藝場佈設計",  role: "教育協調員",   palms: "P", referralsGivenInternal: 3, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 2,  transactionValue: 5350,  ceu: 2, renewal: "未到期" },
+  { id: 16, firstName: "劉", lastName: "洛安", category: "親子手作教學",  role: "會員委員會",   palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 2,  transactionValue: 0,     ceu: 2, renewal: "未到期" },
+  { id: 17, firstName: "曾", lastName: "郁婷", category: "企業團建",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 2,  transactionValue: 520,   ceu: 2, renewal: "未到期" },
+  { id: 18, firstName: "程", lastName: "韋銘", category: "設備儲能",      role: "來賓接待員",   palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 1, visitors: 0, oneToOne: 3,  transactionValue: 0,     ceu: 0, renewal: "未到期" },
+  { id: 19, firstName: "劉", lastName: "家豪", category: "冷凍空調",      role: "副主席",       palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 1,  referralsReceivedExternal: 1, visitors: 0, oneToOne: 4,  transactionValue: 4120,  ceu: 0, renewal: "已續約" },
+  { id: 20, firstName: "劉", lastName: "峻嘉", category: "水電工程",      role: "夥伴會員",     palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 1,  referralsReceivedExternal: 3, visitors: 0, oneToOne: 3,  transactionValue: 2100,  ceu: 0, renewal: "未到期" },
+  { id: 21, firstName: "許", lastName: "祥泰", category: "商業攝影",      role: "會員委員會",   palms: "P", referralsGivenInternal: 0, referralsGivenExternal: 2, referralsReceivedInternal: 2,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 5,  transactionValue: 14700, ceu: 2, renewal: "未到期" },
+  { id: 22, firstName: "廖", lastName: "翊如", category: "壽險業",        role: "夥伴會員",     palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 1, referralsReceivedInternal: 3,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 2,  transactionValue: 4531,  ceu: 4, renewal: "已續約" },
+  { id: 23, firstName: "李", lastName: "惠暄", category: "律師",          role: "夥伴會員",     palms: "P", referralsGivenInternal: 0, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 0, visitors: 1, oneToOne: 0,  transactionValue: 715,   ceu: 2, renewal: "未到期" },
+  { id: 24, firstName: "王", lastName: "湘慈", category: "產物保險",      role: "活動協調員",   palms: "P", referralsGivenInternal: 1, referralsGivenExternal: 1, referralsReceivedInternal: 1,  referralsReceivedExternal: 0, visitors: 0, oneToOne: 3,  transactionValue: 0,     ceu: 2, renewal: "未到期" },
+  { id: 25, firstName: "洪", lastName: "瑋君", category: "早午餐",        role: "夥伴會員",     palms: "P", referralsGivenInternal: 1, referralsGivenExternal: 1, referralsReceivedInternal: 16, referralsReceivedExternal: 1, visitors: 0, oneToOne: 0,  transactionValue: 0,     ceu: 0, renewal: "未到期" },
+  { id: 26, firstName: "陳", lastName: "裔潔", category: "投資金融",      role: "網站管理員",   palms: "P", referralsGivenInternal: 2, referralsGivenExternal: 0, referralsReceivedInternal: 0,  referralsReceivedExternal: 1, visitors: 0, oneToOne: 3,  transactionValue: 0,     ceu: 0, renewal: "未到期" },
 ];
 
-export const defaultCommitteeText = `副主席：劉家豪
-出席專員：王小明
-來賓專員：陳小華
-續約專員：林小美
-數據專員：劉工程
-121 / 引薦專員：李大明`;
+// 第十三屆領導團隊
+export const defaultCommitteeText = `主席：黃芯慧
+副主席：劉家豪
+秘書/財務：陳宜寧
+教育協調員：陳政華
+活動協調員：王湘慈
+成長協調員：黃信樺
+導師協調員：林彥合
+來賓接待員：程韋銘
+網站管理員：陳裔潔
+會員委員會：劉兆矩、陳宜寧、許文婉、劉洛安、崔永疇、程韋銘`;
 
+// 第十三屆目標 2026.04.01 ~ 2026.10.31
 export const defaultGoals: ChapterGoals = {
-  memberTarget: 35,
-  visitorTarget: 10,
-  applicationTarget: 3,
-  oneToOneTarget: 60,
-  referralTarget: 90,
-  absenceWarningRate: 10,
-  kpi121PerMember: 1,
-  kpiReferralPerMember: 1,
+  memberTarget: 55,
+  visitorTarget: 12,       // 每週12人（每月48人）
+  applicationTarget: 2,
+  oneToOneTarget: 50,      // 每週估算（26人 × 約2次）
+  referralTarget: 100,     // 每週100張
+  absenceWarningRate: 2,   // 缺席率目標 1.5%，警戒設 2%
+  kpi121PerMember: 1,      // Power of One：每週至少1次
+  kpiReferralPerMember: 1, // 每週至少1張（每月3張目標）
+  kpiCeuPerMember: 1,
 };
 
 export const defaultSlideScripts: string[] = [
-  // Slide 1
-  "各位會員委員會的夥伴與執事團隊，大家午安！歡迎來到我們本週的會後會。今天我們將以客觀、中立的數字為核心，去洞察目前分會的運作現況。數據的意義不是為了責備，而是為了讓我們能主動發掘哪一位夥伴可能正處於瓶頸、進而給予最及時的商業支援。讓我們一起以樂施者得（Givers Gain）的精神展開今天的數據檢視。",
-  
-  // Slide 2
-  "首先由副主席為各位呈現本週的數據總覽。本週我們共有 10 位會員參與評等，出席狀態可圈可點。本週總共帶來賓 5 人，完成了 15 次的商務 121 交流，累積引薦單達到了 17 張。整體而言，分會本週的交流動能依舊熱絡，非常感謝各位專員的奉獻及帶動。",
-  
-  // Slide 3
-  "在目標達成率部分：本週我們的 121 當週總目標是 60 次，實際完成 15 次，達成率為 25%；引薦總目標是 90 張，實際完成 17 張，達成率為 19%。目前的達成率尚未合格。第一階段的管理原則，是引導全體夥伴『只看總體數字，不點名個人』，藉此聚焦問題是來自外部環境或是分會本身的引薦配對效能，並思索本月份如何集中補強。",
-  
-  // Slide 4
-  "現在進行第二階段：『公開表揚優秀達標夥伴』。特別恭喜本週在 121 與引薦雙重達標的優秀代表：周智控完成了 3 次 121、4 張引薦；林小美與王小明同樣也全數達標！我們在會後會中紀錄這些模範名單，並且在下週的大會上，我們會安排一分鐘，公開表揚並邀請他們分享如何在短時間內，透過高效交流創造高引薦機會，促成這股積極的氛圍。",
-  
-  // Slide 5
-  "接下來我們看一下紅黃綠燈分布。目前綠燈（121 與引薦皆達標）有 5 位夥伴，黃燈有 3 位，而紅燈或需要關懷的夥伴有 2 位。我們在會後會中的原則是：『公開數據，私下輔導』。黃燈的夥伴是我們本週最容易輔導促成達標的對象，而紅燈的夥伴，我們絕對不公開羞辱、也絕不在大會點名。我們將由執事團隊私下約 121，了解是否有產業匹配的困難，並主動協助引路。",
-  
-  // Slide 6
-  "關於出席與請假追蹤：本週出席人數為 8 位，缺席為 1 位，請假 1 位。缺席率大約落在 10%，正好觸及我們的警戒值。出席率是分會誠信與引薦信賴的基礎。在此提醒，若有夥伴請假，請各專員務必輔導其安排優質的『代理人』參與，保持商務線路對外暢通。針對連續缺席與請假的夥伴，將由我們的出席專員啟動關懷聯絡機制，用溫馨協助代替管理糾紛。",
-  
-  // Slide 7
-  "這是我們的來賓到申請書轉換漏斗。本週共有 5 位優質來賓蒞臨，目前有 2 位正在評估填寫申請書。來賓是分會源源不絕的生命力。我們需進一步引導夥伴『邀約高度相關產業鏈的來賓』，提升邀約精準度，並請來賓專員在會後做好高質感的會後訪談，讓商業轉換漏斗的開口更精準，順利為分會注入新血。",
-  
-  // Slide 8
-  "接下來看續約與關懷狀態：我們目前有 5 位是已續約夥伴，2 位屬未到期狀態，1 位正處於待續約（待追蹤），還有 2 位需要特別關懷。續約專員與數據專員將彙整這些名單。我們會提前 在 90 天前 與可能面臨續約的夥伴展開 BNI 商業利益評估（ROI 檢視），協助他們精算參與分會的投資報酬率，用真實商業轉換來促成自然續約。",
-  
-  // Slide 9
-  "這張是執事團隊與會員委員會的分工落實圖。我們請出席專員、來賓專員、續約專員及 121 引薦專員各司其職：出席專員追蹤請假代替人，來賓專員協辦來賓會後，續約專員進行 ROI 面談。唯有我們團隊分工明確，以系統化運作，副主席才能在前方穩健領導，與大家一起協助分會成長。",
-  
-  // Slide 10
-  "副主席建言：『管理不是限制，而是協助看見潛在機會。』當我們看見數據不理想時，代表分會的產業鏈可能出現了斷鏈，或是夥伴之間的信賴度尚未建構完全。接下來的策略重點是：第一、公開表揚優秀者，創造渴望成功的氛圍；第二、私下暖心關懷，不施加壓迫；第三、促進同組 Power Team 夥伴之間的內循環 121，幫大家找回商務配對的感覺。",
-  
-  // Slide 11
-  "為了下週大會與分會體質提昇，我們定下三大核心行動方針。第一、鼓勵『一對一配對精準化』，每位夥伴至少與新進夥伴或跨產業代表完成一次 121；第二、促成『設計與營建 Power Team 合宿/私聊』，透過產業鏈對接直接產出聯合引薦；第三、加強『來賓接待與高轉化率關懷』。請委員會夥伴確實落實，用引薦結果來證明成效。",
-  
-  // Slide 12
-  "最後一頁：『數字只是結果，溫度決定結果。』一個健康的 Chapter，不只是一台高效的商務引擎，更是一個彼此托底的信任家庭。謝謝今天撥空開會的每一位會委會幹部，我們手握分會最關鍵的營運大舵，讓大家用數據、熱情與系統性的輔導，共同擦亮分會金字招牌。謝謝大家，我們會後會到此結束！"
+  "各位長溙分會第十三屆領導團隊的夥伴，大家午安！歡迎來到本週的會後會。今天我們以客觀中立的 PALMS 數字為核心，洞察分會運作現況。數據的意義不是責備，而是協助我們看見哪位夥伴需要支援。讓我們以樂施者得的精神展開今天的數據檢視。",
+  "首先呈現本週的數據總覽。本週共有 26 位會員參與評等，來賓、121 與引薦數字請見看板。整體交易價值持續累積，感謝各位夥伴的奉獻。",
+  "在目標達成率部分，本屆目標為每週引薦 100 張、每週來賓 12 人、全員達到 75 分綠燈。目前達成率請見看板，我們採第一階段原則，只看整體數字，不公開點名。",
+  "進行第二階段：公開表揚優秀達標夥伴。特別恭喜本週 121 與引薦雙達標的夥伴！我們下週大會安排一分鐘公開表揚，邀請分享引薦心法，創造渴望成功的氛圍。",
+  "接下來看紅黃綠燈分布。綠燈夥伴請繼續保持，黃燈夥伴下週全力衝刺，紅燈夥伴請放心，執事幹部將私下約 121 了解困難。我們的原則是公開數據、私下輔導，溫度決定結果。",
+  "本週 PALMS 出席追蹤。第十三屆目標出席率 95%、缺席率控制在 1.5% 以內。提醒：A（缺席）與 S（代理人）六個月內合計不得超過 3 次。出席是分會誠信的基礎，請出席專員溫心關懷所有夥伴。",
+  "來賓到申請書轉換漏斗。本屆每月目標 48 位來賓，每週 12 位。來賓是分會生命力的源頭，請來賓接待員程韋銘學長在例會後 48 小時內完成溫馨回訪，提升轉換率。",
+  "續約與關懷名單。會員委員會請提前 90 天與待續約夥伴進行 BNI ROI 評估，用真實商業成果促成自然續約。本屆月保留率目標 85%、轉換率 15%。",
+  "第十三屆執事幹部分工。主席黃芯慧、副主席劉家豪帶領全體協調員，各司其職落實系統運作。教育協調員陳政華、活動協調員王湘慈、成長協調員黃信樺、導師協調員林彥合，每位幹部都是分會成長的重要引擎。",
+  "副主席建言：本屆目標 55 人團隊、全員 80 分綠燈。達到這個目標不靠個人英雄主義，靠的是每一位夥伴每週穩定貢獻。管理不是限制，而是協助看見彼此的商業需求與潛力。",
+  "下週三大核心行動方針。第一、各小組完成內循環 121，每組至少產生 2 次以上配對；第二、來賓接待員落實 48 小時回訪，推進申請書填寫；第三、成長協調員啟動新會員關懷計畫，加速達到 55 人目標。",
+  "結尾共識：數字只是結果，溫度才是決定因素。長溙分會第十三屆，讓我們手握商業引擎，用數據、熱情與系統性輔導，共同達成每月 550 單引薦、48 位來賓、全員 80 分綠燈的宏偉目標！Givers Gain，謝謝大家！"
+];
+
+// 長溙分會 第十三屆 六個小組（第一排為組長）
+export interface Group {
+  name: string;
+  leaderFullName: string;
+  memberFullNames: string[];
+}
+
+export const GROUPS: Group[] = [
+  { name: "第一組", leaderFullName: "簡廷桓", memberFullNames: ["劉家豪", "陳宜寧", "譚宇芩", "許文婉"] },
+  { name: "第二組", leaderFullName: "李冠樺", memberFullNames: ["林彥合", "劉兆矩", "洪瑋君", "劉洛安"] },
+  { name: "第三組", leaderFullName: "廖翊如", memberFullNames: ["王湘慈", "李惠暄", "崔永疇"] },
+  { name: "第四組", leaderFullName: "許祥泰", memberFullNames: ["黃信樺", "李孟涵", "周宥達"] },
+  { name: "第五組", leaderFullName: "劉峻嘉", memberFullNames: ["黃芯慧", "陳裔潔", "曾郁婷"] },
+  { name: "第六組", leaderFullName: "周昆胤", memberFullNames: ["陳政華", "程韋銘", "楊尚恩"] },
 ];

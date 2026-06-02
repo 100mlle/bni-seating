@@ -1,17 +1,17 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Member, ChapterGoals } from "../types";
-import { defaultSlideScripts } from "../data";
+import { Member, ChapterGoals, memberName, memberLightAccurate, memberScoreAccurate, totalReferralsGiven, PALMS_LABEL, AccumulatedStats, findAcc } from "../types";
+import { defaultSlideScripts, GROUPS } from "../data";
 import pptxgen from "pptxgenjs";
-import { 
-  Presentation, 
-  ChevronLeft, 
-  ChevronRight, 
-  Copy, 
-  Check, 
-  Download, 
-  Volume2, 
-  Layout, 
-  Grid, 
+import {
+  Presentation,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Check,
+  Download,
+  Volume2,
+  Layout,
+  Grid,
   Play,
   Bookmark,
   FileSpreadsheet,
@@ -25,8 +25,27 @@ interface SlidesPreviewerProps {
   weekTitle: string;
   stage: string;
   committeeText: string;
-  customAINotes?: string[]; // Array of 12 strings from AI
+  customAINotes?: string[];
+  accStats: AccumulatedStats[];
 }
+
+// ─── Slide category color dots ────────────────────────────────────────────────
+const CATEGORY_COLORS: Record<string, string> = {
+  "Cover":               "bg-rose-500",
+  "Metrics Overview":    "bg-amber-500",
+  "KPI Targets":         "bg-yellow-500",
+  "Honor Roll":          "bg-emerald-500",
+  "Group Rankings":      "bg-amber-400",
+  "Traffic Lights":      "bg-lime-500",
+  "Attendance Analysis": "bg-sky-400",
+  "Attendance Tracker":  "bg-sky-500",
+  "Visitor Funnel":      "bg-indigo-500",
+  "Renewal Forecast":    "bg-orange-500",
+  "Committee Alignment": "bg-teal-500",
+  "VP Counsel":          "bg-purple-500",
+  "Strategic Actions":   "bg-cyan-500",
+  "Outro Motto":         "bg-rose-500",
+};
 
 export default function SlidesPreviewer({
   members,
@@ -34,7 +53,8 @@ export default function SlidesPreviewer({
   weekTitle,
   stage,
   committeeText,
-  customAINotes
+  customAINotes,
+  accStats,
 }: SlidesPreviewerProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slideScripts, setSlideScripts] = useState<string[]>(defaultSlideScripts);
@@ -44,71 +64,85 @@ export default function SlidesPreviewer({
 
   // Sync with AI notes when they arrive
   useEffect(() => {
-    if (customAINotes && customAINotes.length === 12) {
+    if (customAINotes && customAINotes.length === 14) {
       setSlideScripts(customAINotes);
     }
   }, [customAINotes]);
 
-  // Aggregate metrics
+  // ── Bug fixes: use .length on arrays; add attendanceRate ──────────────────
   const stats = useMemo(() => {
     const total = members.length;
     const visitors = members.reduce((sum, m) => sum + m.visitors, 0);
     const oneToOne = members.reduce((sum, m) => sum + m.oneToOne, 0);
-    const referrals = members.reduce((sum, m) => sum + m.referrals, 0);
-    
-    const absentCount = members.filter(m => m.attendance === "缺席").length;
-    const leaveCount = members.filter(m => m.attendance === "請假").length;
-    const presentCount = members.filter(m => m.attendance === "出席").length;
-    
-    const absenceRate = total > 0 ? Math.round((absentCount / total) * 100) : 0;
+    const referrals = members.reduce((sum, m) => sum + totalReferralsGiven(m), 0);
+
+    const absentCount = members.filter(m => m.palms === "A").length;
+    const leaveCount = members.filter(m => m.palms === "M" || m.palms === "S").length;
+    const presentCount = members.filter(m => m.palms === "P" || m.palms === "L").length;
+
+    const absenceRate = total > 0 ? Math.round(((absentCount + leaveCount) / total) * 100) : 0;
+    // BUG FIX #4 — attendanceRate was missing from useMemo
+    const attendanceRate = total > 0 ? Math.round((presentCount / total) * 100) : 0;
+
     const renewed = members.filter(m => m.renewal === "已續約").length;
     const upcomingRenewal = members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷").length;
 
-    // Traffic light arrays
-    const green = members.filter(m => m.oneToOne >= goals.kpi121PerMember && m.referrals >= goals.kpiReferralPerMember);
-    const yellow = members.filter(m => !green.includes(m) && (m.oneToOne > 0 || m.referrals > 0));
-    const red = members.filter(m => !green.includes(m) && !yellow.includes(m));
+    const green = members.filter(m => memberLightAccurate(m, findAcc(m, accStats)) === "green");
+    const yellow = members.filter(m => memberLightAccurate(m, findAcc(m, accStats)) === "yellow");
+    const red = members.filter(m => memberLightAccurate(m, findAcc(m, accStats)) === "red");
 
     return {
-      total,
-      visitors,
-      oneToOne,
-      referrals,
-      absentCount,
-      leaveCount,
-      presentCount,
-      absenceRate,
-      renewed,
-      upcomingRenewal,
-      green,
-      yellow,
-      red
+      total, visitors, oneToOne, referrals,
+      absentCount, leaveCount, presentCount, absenceRate, attendanceRate,
+      renewed, upcomingRenewal,
+      green, yellow, red,
     };
-  }, [members, goals]);
+  }, [members, goals, accStats]);
+
+  const groupRankings = useMemo(() => {
+    return GROUPS.map(group => {
+      const allNames = [group.leaderFullName, ...group.memberFullNames];
+      const gms = members.filter(m => allNames.includes(memberName(m)));
+      if (gms.length === 0) return { name: group.name, leader: group.leaderFullName, avg: 0, count: 0, green: 0, total: allNames.length };
+      const scores = gms.map(m => memberScoreAccurate(m, findAcc(m, accStats)));
+      const avg = Math.round(scores.reduce((a,b) => a+b, 0) / scores.length);
+      const green = gms.filter(m => memberLightAccurate(m, findAcc(m, accStats)) === "green").length;
+      return { name: group.name, leader: group.leaderFullName, avg, count: gms.length, green, total: allNames.length };
+    }).sort((a, b) => b.avg - a.avg);
+  }, [members, accStats]);
+
+  const CARE_MESSAGES = [
+    "夥伴，您辛苦了！每一次出席都是對分會的支持，我們看見您的付出。",
+    "會員委員會關心您，如有任何商業上的困難，歡迎隨時找副主席聊聊。",
+    "一個人走得快，一群人走得遠。我們在乎每一位夥伴的成長！",
+    "您上週的努力，我們都記得。本週繼續一起創造商業奇蹟！",
+    "感謝您對BNI長溙分會的投入，Givers Gain，付出的人終將得到回報！",
+    "我們的分會因有您而更完整，期待下週再見到您精彩的身影！",
+    "商業夥伴不只是交易夥伴，更是並肩前行的戰友，感謝您的同行！",
+    "每一張引薦單背後都是信任，謝謝您對分會夥伴的信心！",
+  ];
+  const careMessage = useMemo(() => CARE_MESSAGES[Math.floor(Math.random() * CARE_MESSAGES.length)], [weekTitle]);
 
   // Slide list names
   const slideDeckMeta = [
-    { id: 0, title: "1. 封面：會後會追蹤", category: "Cover" },
-    { id: 1, title: "2. 本週數據總覽", category: "Metrics Overview" },
-    { id: 2, title: "3. 目標達成率 (不點名)", category: "KPI Targets" },
-    { id: 3, title: "4. 達標表揚行動榜", category: "Honor Roll" },
-    { id: 4, title: "5. 紅黃綠燈健康分佈", category: "Traffic Lights" },
-    { id: 5, title: "6. 出席與請假追蹤", category: "Attendance Tracker" },
-    { id: 6, title: "7. 來賓到申請書轉換 funnel", category: "Visitor Funnel" },
-    { id: 7, title: "8. 續約關懷 90 天提示", category: "Renewal Forecast" },
-    { id: 8, title: "9. 會委會成員分工落實", category: "Committee Alignment" },
-    { id: 9, title: "10. 副主席策略建言", category: "VP Counsel" },
-    { id: 10, title: "11. 下週三大核心行動", category: "Strategic Actions" },
-    { id: 11, title: "12. 結尾：溫度托底共識", category: "Outro Motto" }
+    { id: 0,  title: "封面",                            category: "Cover" },
+    { id: 1,  title: "本週數據總覽",                    category: "Metrics Overview" },
+    { id: 2,  title: "目標達成率",                      category: "KPI Targets" },
+    { id: 3,  title: "達標表揚行動榜",                  category: "Honor Roll" },
+    { id: 4,  title: "六組積分競賽排行榜",              category: "Group Rankings" },
+    { id: 5,  title: "紅黃綠燈健康分佈",               category: "Traffic Lights" },
+    { id: 6,  title: "PALMS 出席 & 燈號分析",          category: "Attendance Analysis" },
+    { id: 7,  title: "出席與請假追蹤",                  category: "Attendance Tracker" },
+    { id: 8,  title: "來賓到申請書轉換 Funnel",         category: "Visitor Funnel" },
+    { id: 9,  title: "續約關懷 90 天提示",              category: "Renewal Forecast" },
+    { id: 10, title: "會委會成員分工落實",              category: "Committee Alignment" },
+    { id: 11, title: "副主席策略建言",                  category: "VP Counsel" },
+    { id: 12, title: "下週三大核心行動",                category: "Strategic Actions" },
+    { id: 13, title: "結尾：溫度托底共識",              category: "Outro Motto" },
   ];
 
-  const handlePrev = () => {
-    setCurrentSlide(prev => Math.max(0, prev - 1));
-  };
-
-  const handleNext = () => {
-    setCurrentSlide(prev => Math.min(11, prev + 1));
-  };
+  const handlePrev = () => setCurrentSlide(prev => Math.max(0, prev - 1));
+  const handleNext = () => setCurrentSlide(prev => Math.min(13, prev + 1));
 
   const handleCopyScript = () => {
     navigator.clipboard.writeText(slideScripts[currentSlide]);
@@ -122,315 +156,576 @@ export default function SlidesPreviewer({
     setSlideScripts(updated);
   };
 
-  // Convert BNI committee text into lines
   const parsedCommittee = useMemo(() => {
-    return committeeText
-      .split("\n")
-      .map(line => line.trim())
-      .filter(Boolean);
+    return committeeText.split("\n").map(l => l.trim()).filter(Boolean);
   }, [committeeText]);
 
-  const percent = (val: number, max: number) => {
-    return max > 0 ? Math.round((val / max) * 100) : 0;
-  };
+  const percent = (val: number, max: number) => max > 0 ? Math.round((val / max) * 100) : 0;
 
-  // Export to Powerpoint using pptxgenjs!
+  const todayStr = new Date().toISOString().split("T")[0].replace(/-/g, "/");
+  const stageLabel =
+    stage === "stage1" ? "第一階段: 不公開點名" :
+    stage === "stage2" ? "第二階段: 公開表揚" :
+    "第三階段: 私下關懷";
+
+  // ── Reusable slide layout helpers ─────────────────────────────────────────
+  // Shared dark-slide wrapper with left accent bar + footer
+  const DarkSlide = ({ children, noAccent }: { children: React.ReactNode; noAccent?: boolean }) => (
+    <div className="absolute inset-0 bg-[#0f172a] flex flex-col">
+      {/* Left accent bar */}
+      {!noAccent && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-rose-600 z-10" />
+      )}
+      <div className="flex-1 flex flex-col overflow-hidden pl-[3%] pr-[4%] pt-[4%] pb-[8%]">
+        {children}
+      </div>
+      {/* Footer bar */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white/5 border-t border-white/5 text-[9px] text-white/30 px-[6%] py-1.5 flex justify-between z-10">
+        <span>{weekTitle}</span>
+        <span>BNI 長溙分會 第13屆</span>
+        <span>{todayStr}</span>
+      </div>
+    </div>
+  );
+
+  const SlideHeader = ({
+    title,
+    tag,
+    tagColor = "text-slate-400",
+  }: {
+    title: string;
+    tag: string;
+    tagColor?: string;
+  }) => (
+    <div className="flex justify-between items-start mb-3 pb-2 border-b border-white/10 shrink-0">
+      <h2 className="text-lg sm:text-xl font-black text-white leading-tight">{title}</h2>
+      <span className={`font-mono text-[9px] sm:text-[10px] uppercase shrink-0 ml-2 ${tagColor}`}>{tag}</span>
+    </div>
+  );
+
+  // ── Export to PowerPoint ───────────────────────────────────────────────────
   const exportToPowerpoint = async () => {
     setPptGenerating(true);
     try {
       const ppt = new pptxgen();
-      
-      // Theme colors
-      const COLOR_PRIMARY_BG = "4A0E17"; // Maroon
-      const COLOR_SECONDARY_BG = "1E293B"; // Slate
-      const COLOR_TEXT_LIGHT = "FFFFFF";
-      const COLOR_TEXT_DARK = "334155";
-      const COLOR_GOLD = "D4AF37"; // Golden
-      
-      ppt.layout = "LAYOUT_16x9";
-      
-      // Slide 1: Cover
+      ppt.layout = "LAYOUT_WIDE";
+
+      // ── Color constants — orange primary + white palette ────────────────
+      const ORANGE    = "E05010";  // deep orange — primary (cover/closing bg, header stripe)
+      const ORANGE_M  = "F07030";  // medium orange — accents, bar colors
+      const ORANGE_L  = "F4A060";  // light orange — secondary accents, badges
+      const WHITE     = "FFFFFF";  // white — content slide background, text on orange
+      const CARD_L    = "FFF8F2";  // near-white card on light slides
+      const CARD_W    = "FFEEDD";  // light orange-tint card
+      const TXT_D     = "1C0800";  // very dark text on white slides
+      const TXT_M     = "6A3810";  // mid orange-brown text
+      const TXT_S     = "B07040";  // soft muted orange text
+      const SUCCESS   = "3A7850";  // sage green — for green/good items
+      const INFO      = "3A6888";  // muted blue — for info items
+      const WARN_C    = "C04040";  // muted red — for warnings/danger
+      const GOLD_H    = "E89020";  // orange-gold — for highlights
+      const SHADOW    = "DFC0A0";  // warm orange shadow for light bg cards
+      const DARK_SHAD = "8C2800";  // deep orange shadow for orange bg cards
+
+      // ── stageLabel (already in component scope but redefined for PPT) ──
+      const stageLabel =
+        stage === "stage1" ? "第一階段: 不公開點名" :
+        stage === "stage2" ? "第二階段: 公開表揚" :
+        "第三階段: 私下關懷";
+
+      // ── Shared helpers ───────────────────────────────────────────────────
+      const setLightBg = (slide: any) => {
+        slide.background = { fill: WHITE };
+      };
+
+      const setDarkBg = (slide: any) => {
+        slide.background = { fill: ORANGE };
+      };
+
+      const lightHeader = (slide: any, title: string, sub: string) => {
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.07, fill: { color: ORANGE_M }, line: { color: ORANGE_M } });
+        slide.addText(title, { x: 0.5, y: 0.12, w: 10, h: 0.7, fontSize: 24, bold: true, color: TXT_D, fontFace: "Arial" });
+        slide.addText(sub, { x: 0.5, y: 0.82, w: 12.5, h: 0.3, fontSize: 10, color: ORANGE_M, fontFace: "Arial" });
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0.5, y: 1.12, w: 12.3, h: 0.02, fill: { color: ORANGE_M }, line: { color: ORANGE_M } });
+      };
+
+      const addFooter = (slide: any, dark = false) => {
+        const fbg = dark ? "8C2800" : "FFF0E4";
+        const ftxt = dark ? "FFEEDD" : TXT_S;
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 7.0, w: 13.33, h: 0.5, fill: { color: fbg }, line: { color: fbg } });
+        slide.addText(`${weekTitle}  ·  BNI 長溙分會 第13屆  ·  ${new Date().toISOString().split("T")[0].replace(/-/g,"/")}`, {
+          x: 0, y: 7.0, w: 13.33, h: 0.5, fontSize: 8, color: ftxt, align: "center", valign: "middle", fontFace: "Arial"
+        });
+      };
+
+      const card3d = (slide: any, x: number, y: number, w: number, h: number, fillColor: string) => {
+        slide.addShape((ppt as any).ShapeType.roundRect, { x: x+0.06, y: y+0.06, w, h, fill: { color: SHADOW }, line: { color: SHADOW }, rectRadius: 0.1 });
+        slide.addShape((ppt as any).ShapeType.roundRect, { x, y, w, h, fill: { color: fillColor }, line: { color: "F0C090" }, rectRadius: 0.1 });
+      };
+
+      const darkCard3d = (slide: any, x: number, y: number, w: number, h: number, fillColor: string) => {
+        slide.addShape((ppt as any).ShapeType.roundRect, { x: x+0.06, y: y+0.06, w, h, fill: { color: DARK_SHAD }, line: { color: DARK_SHAD }, rectRadius: 0.1 });
+        slide.addShape((ppt as any).ShapeType.roundRect, { x, y, w, h, fill: { color: fillColor }, line: { color: "FF8030" }, rectRadius: 0.1 });
+      };
+
+      const kpiCard = (slide: any, x: number, y: number, w: number, h: number, icon: string, label: string, value: string, target: string, pct: number, barColor: string) => {
+        card3d(slide, x, y, w, h, CARD_L);
+        slide.addText(icon, { x: x+0.15, y: y+0.15, w: 0.5, h: 0.4, fontSize: 18 });
+        slide.addText(label, { x: x+0.1, y: y+0.55, w: w-0.2, h: 0.3, fontSize: 10, color: TXT_M, fontFace: "Arial" });
+        slide.addText(value, { x: x+0.1, y: y+0.82, w: w-0.2, h: 0.7, fontSize: 30, bold: true, color: barColor, fontFace: "Arial" });
+        slide.addText(`目標 ${target}`, { x: x+0.1, y: y+1.5, w: w-0.2, h: 0.25, fontSize: 9, color: TXT_S });
+        slide.addShape((ppt as any).ShapeType.rect, { x: x+0.1, y: y+1.78, w: w-0.2, h: 0.14, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+        const fillW = Math.max(0.05, (Math.min(pct,100)/100) * (w-0.2));
+        slide.addShape((ppt as any).ShapeType.rect, { x: x+0.1, y: y+1.78, w: fillW, h: 0.14, fill: { color: barColor }, line: { color: barColor } });
+        slide.addText(`${pct}%`, { x: x+0.1, y: y+1.95, w: w-0.2, h: 0.2, fontSize: 8, color: barColor, bold: true, align: "right" });
+      };
+
+      // ── Slide 1 — Cover ──────────────────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.background = { fill: COLOR_PRIMARY_BG };
-        slide.addNotes(slideScripts[0] || "");
-        slide.addText("BNI 數據會後會", {
-          x: 1.0, y: 1.8, w: 10.0, h: 0.8,
-          fontSize: 32, bold: true, color: COLOR_GOLD, align: "left"
+        slide.addNotes(slideScripts[0] ?? "");
+        setDarkBg(slide);
+        addFooter(slide, true);
+        for (let i = 0; i < 8; i++) {
+          slide.addShape((ppt as any).ShapeType.line, { x: i*2, y: 0, w: 0, h: 7.5, line: { color: "FF7040", width: 0.5 } });
+        }
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: WHITE }, line: { color: WHITE } });
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 0, w: 0.08, h: 7.0, fill: { color: WHITE }, line: { color: WHITE } });
+
+        slide.addShape((ppt as any).ShapeType.roundRect, { x: 0.5, y: 0.5, w: 1.8, h: 0.5, fill: { color: WHITE }, line: { color: WHITE }, rectRadius: 0.05 });
+        slide.addText("BNI 長溙分會", { x: 0.5, y: 0.5, w: 1.8, h: 0.5, fontSize: 11, bold: true, color: ORANGE, align: "center", valign: "middle" });
+
+        slide.addText("副主席週報  ·  VICE PRESIDENT WEEKLY REPORT", { x: 0.5, y: 1.2, w: 12, h: 0.35, fontSize: 11, color: WHITE, fontFace: "Arial", bold: false });
+
+        slide.addText(weekTitle, { x: 0.5, y: 1.65, w: 12, h: 1.2, fontSize: 42, bold: true, color: WHITE, fontFace: "Arial" });
+
+        slide.addText(stageLabel, {
+          x: 0.5, y: 2.95, w: 5, h: 0.45,
+          fontSize: 13, color: ORANGE, bold: true, fontFace: "Arial",
+          fill: { color: WHITE }, align: "center", valign: "middle"
         });
-        slide.addText(weekTitle, {
-          x: 1.0, y: 2.6, w: 10.0, h: 0.8,
-          fontSize: 27, bold: true, color: COLOR_TEXT_LIGHT, align: "left"
+
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0.5, y: 3.6, w: 0.06, h: 1.0, fill: { color: WHITE }, line: { color: WHITE } });
+        slide.addText("數據不是責備，是協助看見問題\n用數據推進，用溫度帶人", {
+          x: 0.75, y: 3.6, w: 9, h: 1.0, fontSize: 16, color: WHITE, italic: true, fontFace: "Arial"
         });
-        slide.addText("數據不是責備，是協助看見問題 ｜ 副主席執事會口頭簡報報告", {
-          x: 1.0, y: 3.4, w: 10.0, h: 0.5,
-          fontSize: 14, color: "E2E8F0", align: "left"
+
+        slide.addText(`感謝各組組長：${GROUPS.map((g: any) => g.leaderFullName).join("、")} 的帶領！`, {
+          x: 0.5, y: 4.9, w: 12, h: 0.35, fontSize: 11, color: "FFEEDD", italic: true
         });
-        slide.addText("管理階段方針: " + (stage === "stage1" ? "第一階段 (不公開點名)" : stage === "stage2" ? "第二階段 (公開表揚)" : "第三階段 (私下關懷)"), {
-          x: 1.0, y: 4.8, w: 10.0, h: 0.4,
-          fontSize: 12, color: "cbd5e1"
+
+        slide.addText("Givers Gain  ｜  樂施者得", { x: 0, y: 6.3, w: 13.33, h: 0.4, fontSize: 14, color: WHITE, align: "center", bold: true });
+      }
+
+      // ── Slide 3 — KPI Achievement bars ──────────────────────────────────
+      {
+        const slide = ppt.addSlide();
+        slide.addNotes(slideScripts[2] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "目標達成率看板", "KPI ACHIEVEMENT — 不公開點名");
+
+        const bars = [
+          { label: "1 對 1 交流推進", actual: stats.oneToOne, target: goals.oneToOneTarget, color: ORANGE_M, icon: "💬" },
+          { label: "外部＋內部引薦單", actual: stats.referrals, target: goals.referralTarget, color: ORANGE_L, icon: "📋" },
+          { label: "本週邀約商務來賓", actual: stats.visitors, target: goals.visitorTarget, color: SUCCESS, icon: "🤝" },
+          { label: "出席率（PALMS P）", actual: stats.presentCount, target: stats.total, color: INFO, icon: "✅" },
+        ];
+        bars.forEach((b, i) => {
+          const y = 1.38 + i * 1.4;
+          const pct = b.target > 0 ? Math.min(100, Math.round((b.actual/b.target)*100)) : 0;
+          card3d(slide, 0.4, y, 12.2, 1.1, CARD_L);
+          slide.addText(b.icon, { x: 0.55, y: y+0.1, w: 0.4, h: 0.5, fontSize: 16 });
+          slide.addText(b.label, { x: 1.05, y: y+0.12, w: 5, h: 0.35, fontSize: 15, color: TXT_D, bold: true });
+          slide.addText(`${b.actual} / ${b.target}`, { x: 1.05, y: y+0.5, w: 5, h: 0.3, fontSize: 13, color: TXT_M });
+          slide.addText(`${pct}%`, { x: 10.5, y: y+0.1, w: 1.7, h: 0.8, fontSize: 36, bold: true, color: b.color, align: "right", valign: "middle" });
+          slide.addShape((ppt as any).ShapeType.rect, { x: 1.05, y: y+0.82, w: 9.0, h: 0.14, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+          const fw = Math.max(0.05, (pct/100)*9.0);
+          slide.addShape((ppt as any).ShapeType.rect, { x: 1.05, y: y+0.82, w: fw, h: 0.14, fill: { color: b.color }, line: { color: b.color } });
+        });
+        slide.addText("第一階段方針：公開看總體目標，不公開點名", {
+          x: 0.4, y: 6.5, w: 12.2, h: 0.3, fontSize: 10, color: TXT_M, italic: true, align: "center"
         });
       }
-      
-      // Slide 2: Weekly Overview
+
+      // ── Slide 4 — Honor Board ────────────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[1] || "");
-        slide.addText("本週數據總覽 (Metrics Overview)", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
+        slide.addNotes(slideScripts[3] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "本週金牌夥伴榮譽行動榜", "HONOR ROLL — 公開表揚楷模");
+
+        const greenNames = stats.green.map((m: any) => memberName(m));
+        const visitorMembers = members.filter((m: any) => m.visitors > 0);
+
+        card3d(slide, 0.4, 1.3, 7.5, 5.0, "F0FBF4");
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0.4, y: 1.3, w: 7.5, h: 0.06, fill: { color: SUCCESS }, line: { color: SUCCESS } });
+        slide.addText("🏆 121 & 引薦 雙達標模範", { x: 0.55, y: 1.38, w: 7.2, h: 0.45, fontSize: 13, bold: true, color: SUCCESS });
+        let col = 0, row = 0;
+        greenNames.forEach((name: string) => {
+          const bx = 0.55 + col * 2.4;
+          const by = 1.95 + row * 0.55;
+          slide.addShape((ppt as any).ShapeType.roundRect, { x: bx, y: by, w: 2.2, h: 0.42, fill: { color: "E0F5EA" }, line: { color: SUCCESS }, rectRadius: 0.08 });
+          slide.addText(name, { x: bx, y: by, w: 2.2, h: 0.42, fontSize: 11, color: SUCCESS, bold: true, align: "center", valign: "middle" });
+          col++;
+          if (col >= 3) { col = 0; row++; }
         });
-        
-        const rows = [
-          ["核心交流指標", "本週實際完成數據", "會期達成基準比對"],
-          ["分會會員總人數", `${stats.total} 人`, `本會期目標: ${goals.memberTarget} 人`],
-          ["本週來賓出席量", `${stats.visitors} 人`, `單週目標: ${goals.visitorTarget} 人`],
-          ["完成 1 對 1 次數", `${stats.oneToOne} 次`, `單週目標: ${goals.oneToOneTarget} 次`],
-          ["成交/引薦單張數", `${stats.referrals} 張`, `單週目標: ${goals.referralTarget} 張`]
-        ] as any;
-        slide.addTable(rows, {
-          x: 0.8, y: 1.5, w: 11.5, h: 3.5,
-          border: { pt: 1, color: "CBD5E1" },
-          fill: { color: "F8FAFC" },
-          fontSize: 14,
-          align: "center",
-          valign: "middle"
+        if (!greenNames.length) {
+          slide.addText("本週暫無雙達標夥伴", { x: 0.55, y: 2.2, w: 7, h: 0.5, fontSize: 13, color: TXT_S, italic: true });
+        }
+        slide.addText("大會公開表揚，邀請分享 1 分鐘心法", { x: 0.55, y: 6.0, w: 7.2, h: 0.25, fontSize: 9, color: TXT_M, italic: true });
+
+        card3d(slide, 8.1, 1.3, 4.8, 5.0, "FFF8F2");
+        slide.addShape((ppt as any).ShapeType.rect, { x: 8.1, y: 1.3, w: 4.8, h: 0.06, fill: { color: ORANGE_M }, line: { color: ORANGE_M } });
+        slide.addText("🌟 積極邀約來賓榜", { x: 8.25, y: 1.38, w: 4.5, h: 0.45, fontSize: 13, bold: true, color: ORANGE_M });
+        visitorMembers.forEach((m: any, i: number) => {
+          const by = 2.0 + i * 0.65;
+          card3d(slide, 8.25, by, 4.4, 0.52, CARD_L);
+          slide.addText(`${memberName(m)}`, { x: 8.35, y: by+0.04, w: 2.5, h: 0.44, fontSize: 12, color: TXT_D, bold: true, valign: "middle" });
+          slide.addText(`${m.visitors} 位來賓`, { x: 10.9, y: by+0.04, w: 1.6, h: 0.44, fontSize: 11, color: ORANGE_M, bold: true, align: "right", valign: "middle" });
+        });
+        if (!visitorMembers.length) {
+          slide.addText("本週尚無來賓邀約", { x: 8.25, y: 2.2, w: 4.4, h: 0.5, fontSize: 12, color: TXT_S, italic: true, align: "center" });
+        }
+        slide.addText("公開表揚楷模，讓榮耀帶動行動", { x: 0, y: 6.55, w: 13.33, h: 0.3, fontSize: 11, color: TXT_M, align: "center", italic: true });
+      }
+
+      // ── Slide 5 — Group Rankings ─────────────────────────────────────────
+      {
+        const slide = ppt.addSlide();
+        slide.addNotes(slideScripts[4] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "六組積分競賽排行榜", "GROUP RANKING — 小組競賽看板");
+
+        const barColors = [ORANGE, ORANGE_M, ORANGE_L, SUCCESS, INFO, "A08060"];
+        const medals = ["🥇","🥈","🥉","4.","5.","6."];
+
+        groupRankings.forEach((g: any, i: number) => {
+          const y = 1.38 + i * 0.87;
+          const pct = Math.min(100, g.avg);
+          const bw = (pct / 100) * 9.0;
+          const bc = barColors[i] || SUCCESS;
+
+          card3d(slide, 0.4, y, 12.4, 0.75, i === 0 ? "FFF0E0" : CARD_L);
+
+          slide.addText(medals[i], { x: 0.5, y: y+0.05, w: 0.5, h: 0.65, fontSize: i < 3 ? 18 : 14, valign: "middle", align: "center" });
+          slide.addText(g.name, { x: 1.05, y: y+0.05, w: 1.2, h: 0.65, fontSize: 13, bold: true, color: TXT_D, valign: "middle" });
+          slide.addShape((ppt as any).ShapeType.roundRect, { x: 2.35, y: y+0.18, w: 1.6, h: 0.38, fill: { color: i === 0 ? ORANGE_L : CARD_W }, line: { color: i === 0 ? ORANGE_L : CARD_W }, rectRadius: 0.06 });
+          slide.addText(`組長 ${g.leader}`, { x: 2.35, y: y+0.18, w: 1.6, h: 0.38, fontSize: 10, color: i === 0 ? TXT_D : TXT_M, align: "center", valign: "middle" });
+
+          slide.addShape((ppt as any).ShapeType.rect, { x: 4.1, y: y+0.28, w: 9.0, h: 0.22, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+          slide.addShape((ppt as any).ShapeType.rect, { x: 4.1, y: y+0.28, w: bw, h: 0.22, fill: { color: bc }, line: { color: bc } });
+          slide.addText(`${g.avg} 分`, { x: 4.1 + bw + 0.1, y: y+0.2, w: 1.0, h: 0.38, fontSize: 12, bold: true, color: bc, valign: "middle" });
+          slide.addText(`🟢${g.green}/${g.total}`, { x: 12.0, y: y+0.2, w: 0.8, h: 0.38, fontSize: 9, color: SUCCESS, align: "right", valign: "middle" });
+        });
+
+        slide.addText("小組競賽不是壓力，是讓行動被看見", { x: 0, y: 6.55, w: 13.33, h: 0.3, fontSize: 11, color: TXT_M, align: "center", italic: true });
+      }
+
+      // ── Slide 6 — Traffic Lights ─────────────────────────────────────────
+      {
+        const slide = ppt.addSlide();
+        slide.addNotes(slideScripts[5] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "紅黃綠燈健康分佈", "KPI TRAFFIC LIGHTS");
+
+        const lights = [
+          { emoji: "🟢", label: "綠燈達標", count: stats.green.length, note: "121 & 引薦雙達標", bg: "F0FBF4", border: SUCCESS, textC: SUCCESS, subC: SUCCESS },
+          { emoji: "🟡", label: "黃燈補強", count: stats.yellow.length, note: "單項不足，本週重點推進", bg: "FBF8E8", border: GOLD_H, textC: GOLD_H, subC: GOLD_H },
+          { emoji: "🔴", label: "紅燈關懷", count: stats.red.length, note: "需私下溫馨支援", bg: "FBF0F0", border: WARN_C, textC: WARN_C, subC: WARN_C },
+        ];
+        lights.forEach((l, i) => {
+          const x = 0.55 + i * 4.15;
+          card3d(slide, x, 1.35, 3.8, 4.8, l.bg);
+          slide.addShape((ppt as any).ShapeType.rect, { x, y: 1.35, w: 3.8, h: 0.06, fill: { color: l.border }, line: { color: l.border } });
+          slide.addText(l.emoji, { x, y: 1.6, w: 3.8, h: 1.0, fontSize: 52, align: "center" });
+          slide.addText(l.label, { x, y: 2.7, w: 3.8, h: 0.45, fontSize: 16, bold: true, color: l.textC, align: "center" });
+          slide.addText(`${l.count} 人`, { x, y: 3.2, w: 3.8, h: 1.0, fontSize: 54, bold: true, color: l.textC, align: "center" });
+          slide.addText(l.note, { x: x+0.1, y: 4.3, w: 3.6, h: 0.45, fontSize: 10, color: l.subC, align: "center", italic: true });
+          const bw = (l.count / Math.max(1, stats.total)) * 3.4;
+          slide.addShape((ppt as any).ShapeType.rect, { x: x+0.2, y: 4.85, w: 3.4, h: 0.1, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+          if (bw > 0) slide.addShape((ppt as any).ShapeType.rect, { x: x+0.2, y: 4.85, w: bw, h: 0.1, fill: { color: l.border }, line: { color: l.border } });
+        });
+        card3d(slide, 2.5, 6.35, 8.0, 0.4, CARD_W);
+        slide.addText("紅燈是看見，不是指責  ·  公開看數據，私下做關懷", {
+          x: 2.5, y: 6.35, w: 8.0, h: 0.4, fontSize: 11, color: ORANGE_M, align: "center", valign: "middle", italic: true
         });
       }
-      
-      // Slide 3: KPI Target Achievement
+
+      // ── Slide 7 — PALMS Analysis ─────────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[2] || "");
-        slide.addText("本週整體營運達成率 (不記名檢視)", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
+        slide.addNotes(slideScripts[6] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "PALMS 出席 & 燈號分析", "ATTENDANCE & KPI STATUS");
+
+        const palmsItems = [
+          { key: "P", label: "P 出席", count: members.filter((m:any) => m.palms==="P").length, color: SUCCESS, bg: "EEF8F2", border: SUCCESS },
+          { key: "L", label: "L 遲到", count: members.filter((m:any) => m.palms==="L").length, color: GOLD_H, bg: "FFF8E8", border: GOLD_H },
+          { key: "A", label: "A 缺席", count: members.filter((m:any) => m.palms==="A").length, color: WARN_C, bg: "FAF0F0", border: WARN_C },
+          { key: "M", label: "M 病假", count: members.filter((m:any) => m.palms==="M").length, color: INFO, bg: "F0F4FA", border: INFO },
+          { key: "S", label: "S 代理人", count: members.filter((m:any) => m.palms==="S").length, color: ORANGE_M, bg: "FFF4EC", border: ORANGE_M },
+        ];
+        palmsItems.forEach((p, i) => {
+          const x = 0.4 + i * 2.5;
+          card3d(slide, x, 1.35, 2.2, 2.2, p.bg);
+          slide.addShape((ppt as any).ShapeType.rect, { x, y: 1.35, w: 2.2, h: 0.06, fill: { color: p.color }, line: { color: p.color } });
+          slide.addText(p.label, { x, y: 1.55, w: 2.2, h: 0.35, fontSize: 11, bold: true, color: p.color, align: "center" });
+          slide.addText(`${p.count}`, { x, y: 1.95, w: 2.2, h: 0.85, fontSize: 44, bold: true, color: TXT_D, align: "center" });
+          slide.addText("人", { x, y: 2.85, w: 2.2, h: 0.3, fontSize: 10, color: TXT_S, align: "center" });
+          const bw = (p.count / Math.max(1, stats.total)) * 1.8;
+          slide.addShape((ppt as any).ShapeType.rect, { x: x+0.2, y: 3.2, w: 1.8, h: 0.1, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+          if (bw > 0) slide.addShape((ppt as any).ShapeType.rect, { x: x+0.2, y: 3.2, w: bw, h: 0.1, fill: { color: p.color }, line: { color: p.color } });
         });
-        slide.addText(`第一階段方針：公開看總體目標、不點名抱怨。了解分會動能痛點：`, {
-          x: 0.8, y: 1.2, w: 11.0, h: 0.4, fontSize: 13, color: "64748B"
+
+        card3d(slide, 0.4, 3.7, 12.4, 2.5, CARD_L);
+        slide.addText("KPI 燈號分佈", { x: 0.6, y: 3.82, w: 11.8, h: 0.4, fontSize: 12, bold: true, color: TXT_D });
+        [
+          { label: "🟢 綠燈達標", count: stats.green.length, color: SUCCESS, note: "121 & 引薦雙達標" },
+          { label: "🟡 黃燈補強", count: stats.yellow.length, color: GOLD_H, note: "單項不足" },
+          { label: "🔴 紅燈關懷", count: stats.red.length, color: WARN_C, note: "私下溫馨輔導" },
+        ].forEach((t, i) => {
+          const tx = 0.6 + i * 4.1;
+          slide.addText(`${t.label}  ${t.count} 人`, { x: tx, y: 4.3, w: 3.9, h: 0.5, fontSize: 16, bold: true, color: t.color });
+          const bw2 = (t.count / Math.max(1, stats.total)) * 3.5;
+          slide.addShape((ppt as any).ShapeType.rect, { x: tx, y: 4.85, w: 3.5, h: 0.16, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+          if (bw2 > 0) slide.addShape((ppt as any).ShapeType.rect, { x: tx, y: 4.85, w: bw2, h: 0.16, fill: { color: t.color }, line: { color: t.color } });
+          slide.addText(t.note, { x: tx, y: 5.06, w: 3.5, h: 0.3, fontSize: 9, color: TXT_M, italic: true });
         });
-        
-        // Add 121 box
-        slide.addText(`1 對 1 交流達成： ${stats.oneToOne} / ${goals.oneToOneTarget} 次`, {
-          x: 0.8, y: 2.0, w: 5.5, h: 1.0,
-          fill: { color: "F1F5F9" }, fontSize: 16, bold: true, color: "1e293b", align: "center", valign: "middle"
+        slide.addText(careMessage, { x: 0.4, y: 6.4, w: 12.4, h: 0.35, fontSize: 10, color: ORANGE_M, italic: true, align: "center" });
+      }
+
+      // ── Slide 8 — Attendance Tracker ─────────────────────────────────────
+      {
+        const slide = ppt.addSlide();
+        slide.addNotes(slideScripts[7] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "出席狀況與請假追蹤", "ATTENDANCE COMPLIANCE");
+
+        const absentNames = members.filter((m:any) => m.palms==="A").map((m:any) => memberName(m)).join("、") || "無";
+        const attOk = stats.absenceRate < goals.absenceWarningRate;
+
+        card3d(slide, 0.4, 1.35, 4.2, 4.8, attOk ? "F0FBF4" : "FAF0F0");
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0.4, y: 1.35, w: 4.2, h: 0.06, fill: { color: attOk ? SUCCESS : WARN_C }, line: { color: attOk ? SUCCESS : WARN_C } });
+        slide.addText("本週出席率", { x: 0.4, y: 1.55, w: 4.2, h: 0.4, fontSize: 12, color: TXT_M, align: "center" });
+        slide.addText(`${stats.attendanceRate}%`, { x: 0.4, y: 2.0, w: 4.2, h: 1.4, fontSize: 64, bold: true, color: attOk ? SUCCESS : WARN_C, align: "center" });
+        slide.addText(`警戒標準：${100-goals.absenceWarningRate}% 以上`, { x: 0.4, y: 3.5, w: 4.2, h: 0.35, fontSize: 10, color: TXT_M, align: "center" });
+        const bwAtt = (stats.attendanceRate/100) * 3.5;
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0.65, y: 4.0, w: 3.5, h: 0.2, fill: { color: "F5DCC0" }, line: { color: "F5DCC0" } });
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0.65, y: 4.0, w: bwAtt, h: 0.2, fill: { color: attOk ? SUCCESS : WARN_C }, line: { color: attOk ? SUCCESS : WARN_C } });
+        slide.addText(attOk ? "出席健康 ✅" : "⚠️ 低於警戒線", { x: 0.4, y: 4.3, w: 4.2, h: 0.3, fontSize: 11, bold: true, color: attOk ? SUCCESS : WARN_C, align: "center" });
+
+        const mNames  = members.filter((m:any) => m.palms==="M").map((m:any) => memberName(m)).join("、") || "無";
+        const sNames  = members.filter((m:any) => m.palms==="S").map((m:any) => memberName(m)).join("、") || "無";
+        const infoItems = [
+          { icon: "🔄", title: "S 代理人夥伴（本週）", value: sNames, color: ORANGE_M },
+          { icon: "🏥", title: "M 病假夥伴（本週）", value: mNames, color: INFO },
+          { icon: "⚠️", title: "A 缺席夥伴（本週）", value: absentNames, color: WARN_C },
+        ];
+        infoItems.forEach((item, i) => {
+          const iy = 1.35 + i * 1.65;
+          card3d(slide, 5.0, iy, 7.8, 1.5, CARD_L);
+          slide.addText(`${item.icon} ${item.title}`, { x: 5.2, y: iy+0.15, w: 7.4, h: 0.4, fontSize: 12, bold: true, color: item.color });
+          slide.addText(item.value, { x: 5.2, y: iy+0.65, w: 7.4, h: 0.7, fontSize: 14, color: TXT_D, valign: "middle", wrap: true });
         });
-        // Add referrals box
-        slide.addText(`引薦單量達成： ${stats.referrals} / ${goals.referralTarget} 張`, {
-          x: 6.8, y: 2.0, w: 5.5, h: 1.0,
-          fill: { color: "F1F5F9" }, fontSize: 16, bold: true, color: "1e293b", align: "center", valign: "middle"
-        });
-        
-        slide.addText(`121 單週達成率：${Math.round((stats.oneToOne / goals.oneToOneTarget) * 100)}% ｜ 引薦單週達成率：${Math.round((stats.referrals / goals.referralTarget) * 100)}%`, {
-          x: 0.8, y: 3.8, w: 11.5, h: 0.5, fontSize: 15, bold: true, color: "9f1239"
+        slide.addText("BNI 無請假制度 — A 缺席需補件、S 代理可抵免，M 病假計入六個月出席紀錄。", {
+          x: 0.4, y: 6.4, w: 12.4, h: 0.35, fontSize: 10, color: TXT_M, italic: true, align: "center"
         });
       }
-      
-      // Slide 4: Leaderboard
+
+      // ── Slide 9 — Visitor Funnel ─────────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[3] || "");
-        slide.addText("本週學長姊行動榜 (表揚達標者)", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
+        slide.addNotes(slideScripts[8] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "來賓到申請書轉換漏斗", "VISITOR CONVERSION FUNNEL");
+
+        const funnelStages = [
+          { label: "邀約接觸", sub: "精準鎖定目標產業", w: 12.0, color: "EDE8FF", text: TXT_D },
+          { label: `蒞臨來賓 ${stats.visitors} 人`, sub: "本週實際到訪人數", w: 9.5, color: CARD_W, text: TXT_D },
+          { label: "48小時高質感回訪", sub: "專員溫馨追蹤聯繫", w: 7.5, color: "FFDDC0", text: TXT_D },
+          { label: "一對一面談配對", sub: "深度了解商業需求", w: 5.5, color: "FFC8A0", text: TXT_D },
+          { label: `提交申請書 目標 ${goals.applicationTarget} 本`, sub: "成功加入分會", w: 4.0, color: ORANGE, text: WHITE },
+        ];
+        funnelStages.forEach((f, i) => {
+          const y = 1.3 + i * 1.12;
+          const x = (13.33 - f.w) / 2;
+          card3d(slide, x, y, f.w, 1.0, f.color);
+          slide.addText(f.label, { x: x+0.15, y: y+0.05, w: f.w-0.3, h: 0.55, fontSize: 18, bold: true, color: f.text, align: "center", valign: "middle" });
+          slide.addText(f.sub, { x: x+0.15, y: y+0.62, w: f.w-0.3, h: 0.32, fontSize: 11, color: f.text, align: "center", italic: true });
+          if (i < funnelStages.length - 1) {
+            slide.addText("▼", { x: 0, y: y+1.0, w: 13.33, h: 0.12, fontSize: 12, color: TXT_S, align: "center" });
+          }
         });
-        
-        const greenMembersName = stats.green.map(m => m.name).join("、") || "本週尚無雙達標者";
-        const visitorActiveNames = members.filter(m => m.visitors > 0).map(m => `${m.name}(${m.visitors}來賓)`).join(" 、 ") || "本週尚無來賓";
-        
-        slide.addText("🟢 121 & 引薦 雙達標學長姊（大會公開表揚，邀請1分鐘心法分享）", {
-          x: 0.8, y: 1.5, w: 11.5, h: 0.4, fontSize: 14, bold: true, color: "15803d"
-        });
-        slide.addText(greenMembersName, {
-          x: 0.8, y: 2.1, w: 11.5, h: 0.8, fontSize: 18, color: "334155", fontFace: "Georgia"
-        });
-        
-        slide.addText("🟠 積極邀約來賓學長姊（為分會引入活力生力軍）", {
-          x: 0.8, y: 3.2, w: 11.5, h: 0.4, fontSize: 14, bold: true, color: "0369a1"
-        });
-        slide.addText(visitorActiveNames, {
-          x: 0.8, y: 3.8, w: 11.5, h: 0.8, fontSize: 18, color: "334155"
+        slide.addText("來賓不是偶然，是精準邀約與系統追蹤的成果", {
+          x: 0, y: 6.55, w: 13.33, h: 0.3, fontSize: 11, color: TXT_M, italic: true, align: "center"
         });
       }
-      
-      // Slide 5: Traffic Light Distribution
+
+      // ── Slide 10 — Renewal Tracker ───────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[4] || "");
-        slide.addText("本週紅黃綠燈健康分佈", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
+        slide.addNotes(slideScripts[9] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "會員續約 90 天關懷預警", "MEMBERSHIP RENEWAL HEALTH");
+
+        const renewalList = members.filter((m:any) => m.renewal==="待追蹤"||m.renewal==="需要關懷");
+
+        const stages = [
+          { label: "90 天前提醒", icon: "📅", sub: "偕同 Power Team\n啟動 ROI 面談", color: ORANGE },
+          { label: "ROI 精算面談", icon: "📊", sub: "具體成交算盤\n輔助留續決策", color: ORANGE_M },
+          { label: "續約確認", icon: "✅", sub: "確認續約意願\n完成手續", color: SUCCESS },
+        ];
+        stages.forEach((s, i) => {
+          const x = 0.8 + i * 4.2;
+          card3d(slide, x, 1.35, 3.6, 2.8, CARD_L);
+          slide.addShape((ppt as any).ShapeType.rect, { x, y: 1.35, w: 3.6, h: 0.06, fill: { color: s.color }, line: { color: s.color } });
+          slide.addText(s.icon, { x, y: 1.55, w: 3.6, h: 0.7, fontSize: 30, align: "center" });
+          slide.addText(s.label, { x: x+0.1, y: 2.3, w: 3.4, h: 0.45, fontSize: 13, bold: true, color: TXT_D, align: "center" });
+          slide.addText(s.sub, { x: x+0.1, y: 2.8, w: 3.4, h: 0.8, fontSize: 10, color: TXT_M, align: "center", italic: true });
+          if (i < 2) slide.addText("→", { x: x+3.6, y: 2.2, w: 0.6, h: 0.5, fontSize: 20, color: ORANGE_M, align: "center", valign: "middle" });
         });
-        
-        const greenCount = stats.green.length;
-        const yellowCount = stats.yellow.length;
-        const redCount = stats.red.length;
-        
-        slide.addText(`🟢 綠燈達標人數： ${greenCount} 人 ｜ 建議大會高度鼓勵`, {
-          x: 0.8, y: 1.5, w: 11.5, h: 0.6, fill: { color: "DCFCE7" } as any, fontSize: 14, color: "15803d", bold: true, valign: "middle"
-        } as any);
-        slide.addText(`🟡 黃燈輔導人數： ${yellowCount} 人 ｜ 建議由會委會主動輔導121，極易轉綠`, {
-          x: 0.8, y: 2.4, w: 11.5, h: 0.6, fill: { color: "FEF3C7" } as any, fontSize: 14, color: "b45309", bold: true, valign: "middle"
-        } as any);
-        slide.addText(`🔴 紅燈關懷人數： ${redCount} 人 ｜ 嚴守「私下教練溫馨關懷」原則，拒絕公開羞辱`, {
-          x: 0.8, y: 3.3, w: 11.5, h: 0.6, fill: { color: "FFE4E6" } as any, fontSize: 14, color: "be123c", bold: true, valign: "middle"
-        } as any);
+
+        card3d(slide, 0.4, 4.4, 12.4, 1.5, CARD_W);
+        slide.addText(`✅ 已完成續約：${stats.renewed} 人  ·  🔔 需追蹤關懷：${stats.upcomingRenewal} 人`, {
+          x: 0.6, y: 4.55, w: 12.0, h: 0.45, fontSize: 13, color: WHITE, align: "center", bold: true
+        });
+        const listText = renewalList.length ? renewalList.map((m:any) => `${memberName(m)} (${m.renewal})`).join("  ·  ") : "本週無待追蹤夥伴，非常健康！";
+        slide.addText(listText, { x: 0.6, y: 5.05, w: 12.0, h: 0.7, fontSize: 11, color: renewalList.length ? WARN_C : SUCCESS, align: "center", italic: true });
+        slide.addText("提早關懷，不讓續約變成最後一刻的壓力", { x: 0, y: 6.55, w: 13.33, h: 0.3, fontSize: 11, color: TXT_M, italic: true, align: "center" });
       }
-      
-      // Slide 6: Attendance Tracker
+
+      // ── Slide 11 — Committee Org Chart ───────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[5] || "");
-        slide.addText("出席與請假追蹤 ─ 穩定根基", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
-        });
-        
-        const absentNames = members.filter(m => m.attendance === "缺席").map(m => m.name).join("、") || "無無故缺席";
-        const leaveNames = members.filter(m => m.attendance === "請假").map(m => m.name).join("、") || "無請假";
-        
-        slide.addText(`本週分會出席率： ${stats.attendanceRate}% (警戒防護線：${(100 - goals.absenceWarningRate)}%)`, {
-          x: 0.8, y: 1.3, w: 11.5, h: 0.4, fontSize: 15, bold: true, color: stats.absenceRate >= goals.absenceWarningRate ? "9f1239" : "15803d"
-        });
-        
-        slide.addText(`📋 本週請假名單： ${leaveNames}`, {
-          x: 0.8, y: 1.9, w: 11.5, h: 0.8, fill: { color: "F8FAFC" }, fontSize: 14, color: "475569", valign: "middle"
-        });
-        slide.addText(`⚠️ 本週無故缺席名單： ${absentNames}`, {
-          x: 0.8, y: 2.9, w: 11.5, h: 0.8, fill: { color: "F8FAFC" }, fontSize: 14, color: "475569", valign: "middle"
-        });
-        slide.addText("💡 會後方針：出席專員主動聯絡未派代理人之學長，傳遞「商務對外線路不可中斷」的 BNI 誠信共識。", {
-          x: 0.8, y: 4.1, w: 11.5, h: 0.4, fontSize: 12, italic: true, color: "64748B"
-        });
-      }
-      
-      // Slide 7: Visitor Funnel
-      {
-        const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[6] || "");
-        slide.addText("來賓到申請書轉換漏斗", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
-        });
-        
-        slide.addText(`本編總計來賓： ${stats.visitors} 人`, {
-          x: 0.8, y: 1.6, w: 11.5, h: 0.7, fill: { color: "EEF2F6" }, fontSize: 16, bold: true, color: "1E293B", align: "center", valign: "middle"
-        });
-        slide.addText(`來賓申請書目： ${goals.applicationTarget} 本 (本期週均目標)`, {
-          x: 2.0, y: 2.6, w: 9.1, h: 0.7, fill: { color: "E2E8F0" }, fontSize: 14, bold: true, color: "334155", align: "center", valign: "middle"
-        });
-        slide.addText("來賓專員行動指引：大會結束後 48 小時內，專員進行高質感回訪，幫助來賓釐清行業鏈配對利益。", {
-          x: 0.8, y: 3.8, w: 11.5, h: 0.4, fontSize: 13, color: "0284c7"
-        });
-      }
-      
-      // Slide 8: Renewal Tracker
-      {
-        const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[7] || "");
-        slide.addText("會員續約健康關懷 90 天提示", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
-        });
-        
-        const followRenewalList = members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷");
-        const listText = followRenewalList.map(m => `${m.name} (${m.category}) - ${m.renewal}`).join(" ｜ ") || "本週無待追蹤/需要關懷之夥伴";
-        
-        slide.addText(`已完成續約學長姊： ${stats.renewed} 人 ｜ 近期需追蹤關懷人數： ${stats.upcomingRenewal} 人`, {
-          x: 0.8, y: 1.4, w: 11.5, h: 0.4, fontSize: 15, bold: true, color: "334155"
-        });
-        slide.addText(listText, {
-          x: 0.8, y: 2.1, w: 11.5, h: 1.0, fill: { color: "FFF1F2" } as any, fontSize: 14, color: "be123c", align: "center", valign: "middle"
-        } as any);
-        slide.addText("💡 關懷機制：提早 90 天偕同 Power Team 幹部與待續約學長姊做 ROI 精算與痛點診斷，避免届期被動流失。", {
-          x: 0.8, y: 3.6, w: 11.5, h: 0.5, fontSize: 13, color: "475569"
-        });
-      }
-      
-      // Slide 9: Committee Mapping
-      {
-        const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[8] || "");
-        slide.addText("會員委員會成員分工執行表", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
-        });
-        
-        const rolesArray = parsedCommittee.map(line => {
+        slide.addNotes(slideScripts[10] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "會員委員會幹部責任分工", "COMMITTEE ORGANIZATION");
+
+        const roles: { role: string; name: string }[] = [];
+        parsedCommittee.forEach((line: string) => {
           const parts = line.split("：");
-          return [parts[0] || "職位", parts[1] || "未指定專人"];
+          const roleName = parts[0]?.trim() || "職位";
+          const namesPart = parts[1]?.trim() || "未指定";
+          if (namesPart.includes("、")) {
+            // Multiple people — expand into individual entries with shortened role label
+            const shortRole = roleName.replace("會員委員會", "會委會").replace("協調員", "專員");
+            namesPart.split("、").forEach(n => {
+              roles.push({ role: shortRole, name: n.trim() });
+            });
+          } else {
+            roles.push({ role: roleName, name: namesPart });
+          }
         });
-        
-        slide.addTable([["會委會專門崗位", "本週落實負責幹部"], ...rolesArray] as any, {
-          x: 0.8, y: 1.5, w: 11.5, h: 3.2,
-          border: { pt: 1, color: "E2E8F0" },
-          fontSize: 13,
-          align: "center",
-          valign: "middle"
-        } as any);
+
+        card3d(slide, 5.2, 1.35, 3.0, 1.0, "FFE8D8");
+        slide.addShape((ppt as any).ShapeType.rect, { x: 5.2, y: 1.35, w: 3.0, h: 0.06, fill: { color: ORANGE }, line: { color: ORANGE } });
+        slide.addText("副主席 · 劉家豪", { x: 5.2, y: 1.42, w: 3.0, h: 0.87, fontSize: 14, bold: true, color: TXT_D, align: "center", valign: "middle" });
+
+        slide.addShape((ppt as any).ShapeType.line, { x: 6.7, y: 2.35, w: 0, h: 0.4, line: { color: ORANGE_M, width: 1.5 } });
+
+        const cols = 4;
+        roles.forEach((r: { role: string; name: string }, i: number) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = 0.4 + col * 3.15;
+          const y = 2.85 + row * 1.1;
+          card3d(slide, x, y, 2.9, 0.92, CARD_L);
+          slide.addText(r.role, { x: x+0.1, y: y+0.06, w: 2.7, h: 0.35, fontSize: 9, color: ORANGE_M, bold: true, align: "center" });
+          slide.addText(r.name, { x: x+0.1, y: y+0.44, w: 2.7, h: 0.4, fontSize: 11, color: TXT_D, align: "center", bold: true });
+        });
+        slide.addText("有責任、有溫度、有回報", { x: 0, y: 6.55, w: 13.33, h: 0.3, fontSize: 11, color: TXT_M, italic: true, align: "center" });
       }
-      
-      // Slide 10: Vice President Strategy
+
+      // ── Slide 12 — VP Counsel ────────────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.background = { fill: COLOR_SECONDARY_BG };
-        slide.addNotes(slideScripts[9] || "");
-        slide.addText("副主席數據策略與建言", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: COLOR_GOLD
+        slide.addNotes(slideScripts[11] ?? "");
+        setDarkBg(slide);
+        addFooter(slide, true);
+        for (let i = 0; i < 6; i++) {
+          slide.addShape((ppt as any).ShapeType.line, { x: i*2.5, y: 0, w: 0, h: 7.5, line: { color: "FF7040", width: 0.5 } });
+        }
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 0, w: 0.08, h: 7.0, fill: { color: WHITE }, line: { color: WHITE } });
+        slide.addShape((ppt as any).ShapeType.rect, { x: 13.25, y: 0, w: 0.08, h: 7.0, fill: { color: WHITE }, line: { color: WHITE } });
+
+        slide.addText("副主席本週指導建言", { x: 0.5, y: 0.4, w: 12.3, h: 0.45, fontSize: 14, color: WHITE, bold: true, align: "center" });
+
+        darkCard3d(slide, 1.5, 1.1, 10.3, 2.0, "C03800");
+        slide.addText("開口要溫度，出手要專業\n公開看楷模，私下看託底", {
+          x: 1.6, y: 1.2, w: 10.1, h: 1.8, fontSize: 24, bold: true, color: WHITE, align: "center", valign: "middle",
         });
-        
-        slide.addText("「 開口要溫度、出手要專業；公開看楷模、私下看託底。 」", {
-          x: 0.8, y: 1.6, w: 11.5, h: 1.0,
-          fontSize: 19, bold: true, italic: true, color: COLOR_GOLD, align: "center", valign: "middle"
+
+        slide.addText("我們的責任不是找瑕疵，而是成為夥伴背後的托底力量。\n公開表揚綠燈夥伴，私下協助紅燈夥伴，讓每一位會員都感受到商業網絡的溫度。", {
+          x: 1.0, y: 3.4, w: 11.3, h: 1.5, fontSize: 13, color: "FFEEDD", align: "center", italic: true, wrap: true
         });
-        
-        slide.addText("副主席提醒執事團隊：數據只是我們發掘夥伴瓶頸的溫度計。切忌在大會 or 群組公開羞辱。本週執事分頭展開一對一關懷，以協助引流的心態了解紅燈原因。同時大力表揚達標的領頭羊學長，建立積極的榮譽感！", {
-          x: 0.8, y: 2.8, w: 11.5, h: 1.5,
-          fontSize: 14, color: "E2E8F0"
-        });
-      }
-      
-      // Slide 11: Top 3 Action items
-      {
-        const slide = ppt.addSlide();
-        slide.addNotes(slideScripts[10] || "");
-        slide.addText("下週三大核心戰術行動方針", {
-          x: 0.8, y: 0.5, w: 11.0, h: 0.6,
-          fontSize: 24, bold: true, color: "800020"
-        });
-        
-        slide.addText("1. 121 指標推進：鼓勵各組 Power Team 內循環，每人下週至少安排 1 場精確對位的 121 商業訪談。", {
-          x: 0.8, y: 1.5, w: 11.5, h: 0.7, fill: { color: "F8FAFC" }, fontSize: 13, bold: true, color: "334155", valign: "middle"
-        });
-        slide.addText("2. 來賓帶入精準化：結合建材營造、行銷設計等核心組別發起『產業主題日』，定點精準邀約來賓進場配對。", {
-          x: 0.8, y: 2.4, w: 11.5, h: 0.7, fill: { color: "F8FAFC" }, fontSize: 13, bold: true, color: "334155", valign: "middle"
-        });
-        slide.addText("3. ROI 面談關懷啟動：續約專員與數據專員近期主動排程『90天輔導面談』，用具體成交算盤輔助留續率。", {
-          x: 0.8, y: 3.3, w: 11.5, h: 0.7, fill: { color: "F8FAFC" }, fontSize: 13, bold: true, color: "334155", valign: "middle"
+        slide.addText("副主席會後會語錄  ·  樂施者得 Givers Gain", {
+          x: 0, y: 6.0, w: 13.33, h: 0.35, fontSize: 11, color: "FFEEDD", align: "center"
         });
       }
-      
-      // Slide 12: Outro Motto (Burgundy banner)
+
+      // ── Slide 13 — Action Items ──────────────────────────────────────────
       {
         const slide = ppt.addSlide();
-        slide.background = { fill: COLOR_PRIMARY_BG };
-        slide.addNotes(slideScripts[11] || "");
+        slide.addNotes(slideScripts[12] ?? "");
+        setLightBg(slide);
+        addFooter(slide);
+        lightHeader(slide, "下週三大核心行動方針", "NEXT WEEK — ACTION ITEMS");
+
+        const actions = [
+          { num: "1", icon: "💬", title: "121 指標推進", body: "鼓勵各組 Power Team 內循環，每人下週至少安排 1 場精確對位的 121 商業訪談。協助黃燈、紅燈夥伴快速連線。", cardBg: "FFF0E4", accent: ORANGE },
+          { num: "2", icon: "🤝", title: "來賓帶入精準化", body: "結合建材營造、行銷設計等核心組別，發起產業主題日，定點精準邀約目標來賓進場配對。", cardBg: "EEF8F4", accent: SUCCESS },
+          { num: "3", icon: "📈", title: "ROI 面談關懷啟動", body: "續約專員與數據專員主動排程 90 天輔導面談，用具體成交算盤輔助留續率，避免被動流失。", cardBg: "FFF8E0", accent: GOLD_H },
+        ];
+        actions.forEach((a, i) => {
+          const y = 1.38 + i * 1.65;
+          card3d(slide, 0.4, y, 12.4, 1.45, a.cardBg);
+          slide.addShape((ppt as any).ShapeType.rect, { x: 0.4, y, w: 12.4, h: 0.06, fill: { color: a.accent }, line: { color: a.accent } });
+          slide.addShape((ppt as any).ShapeType.roundRect, { x: 0.5, y: y+0.2, w: 0.55, h: 0.55, fill: { color: a.accent }, line: { color: a.accent }, rectRadius: 0.08 });
+          slide.addText(a.num, { x: 0.5, y: y+0.2, w: 0.55, h: 0.55, fontSize: 18, bold: true, color: TXT_D, align: "center", valign: "middle" });
+          slide.addText(a.icon, { x: 1.15, y: y+0.12, w: 0.5, h: 0.6, fontSize: 22, valign: "middle" });
+          slide.addText(a.title, { x: 1.75, y: y+0.12, w: 4.0, h: 0.55, fontSize: 15, bold: true, color: TXT_D, valign: "middle" });
+          slide.addText(a.body, { x: 1.75, y: y+0.7, w: 10.8, h: 0.65, fontSize: 10, color: TXT_M, wrap: true });
+        });
+        slide.addText("下週不是看誰做最多，而是看誰開始行動", { x: 0, y: 6.55, w: 13.33, h: 0.3, fontSize: 11, color: TXT_M, italic: true, align: "center" });
+      }
+
+      // ── Slide 14 — Closing ───────────────────────────────────────────────
+      {
+        const slide = ppt.addSlide();
+        slide.addNotes(slideScripts[13] ?? "");
+        setDarkBg(slide);
+        addFooter(slide, true);
+        for (let i = 0; i < 8; i++) {
+          slide.addShape((ppt as any).ShapeType.line, { x: i*2, y: 0, w: 0, h: 7.5, line: { color: "FF7040", width: 0.5 } });
+        }
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: WHITE }, line: { color: WHITE } });
+        slide.addShape((ppt as any).ShapeType.rect, { x: 0, y: 6.92, w: 13.33, h: 0.08, fill: { color: WHITE }, line: { color: WHITE } });
+
+        slide.addText("「", { x: 0.8, y: 1.3, w: 1.0, h: 1.0, fontSize: 60, color: WHITE, bold: true });
         slide.addText("數字只是結果，溫度決定結果", {
-          x: 1.0, y: 1.6, w: 10.0, h: 0.8,
-          fontSize: 28, bold: true, color: COLOR_GOLD, align: "center"
+          x: 1.3, y: 1.5, w: 10.8, h: 1.2, fontSize: 34, bold: true, color: WHITE, align: "center", valign: "middle"
         });
-        slide.addText("攜手打造健康、有溫度且高產引薦的分會！", {
-          x: 1.0, y: 2.5, w: 10.0, h: 0.6,
-          fontSize: 18, color: COLOR_TEXT_LIGHT, align: "center"
+        slide.addText("」", { x: 11.5, y: 2.1, w: 1.0, h: 1.0, fontSize: 60, color: WHITE, bold: true, align: "right" });
+
+        slide.addText("健康的分會不只是引薦引擎，\n更是一個彼此照拂、精準配對的信任網路。\n感謝每一位幹部與專員的無私付出！", {
+          x: 1.5, y: 3.3, w: 10.3, h: 1.8, fontSize: 14, color: "FFEEDD", align: "center", italic: true, wrap: true
         });
-        slide.addText("BNI 副主席會會報告 ｜ 感謝每一位會員委員會學長姊的商務奉獻 ── Givers Gain", {
-          x: 1.0, y: 4.2, w: 10.0, h: 0.5,
-          fontSize: 12, color: "80C6C6C6", align: "center"
+
+        darkCard3d(slide, 3.5, 5.3, 6.3, 0.8, "C03800");
+        slide.addText("Givers Gain  ｜  樂施者得  ｜  BNI 長溙分會", {
+          x: 3.5, y: 5.3, w: 6.3, h: 0.8, fontSize: 13, bold: true, color: WHITE, align: "center", valign: "middle"
         });
       }
-      
-      // Save the presentation file!
+
       await ppt.writeFile({ fileName: `BNI_副主席會後會_${weekTitle.replace(/[\/\|\\:\*\?"<>]/g, "_")}.pptx` });
     } catch (e) {
       console.error(e);
@@ -440,122 +735,44 @@ export default function SlidesPreviewer({
     }
   };
 
+  // ── Export JSON ─────────────────────────────────────────────────────────────
   const getSlidesStructuredData = () => {
-    // Generate text content/metrics description for each slide based on statistics
-    const greenNames = stats.green.map(m => m.name).join("、") || "無";
-    const visitorActiveNames = members.filter(m => m.visitors > 0).map(m => `${m.name}(${m.visitors}來賓)`).join(" 、 ") || "無";
-    const absentNames = members.filter(m => m.attendance === "缺席").map(m => m.name).join("、") || "無";
-    const leaveNames = members.filter(m => m.attendance === "請假").map(m => m.name).join("、") || "無";
-    const followRenewalList = members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷").map(m => `${m.name}(${m.category}) - ${m.renewal}`).join("、") || "無";
-    
+    const greenNames = stats.green.map(m => memberName(m)).join("、") || "無";
+    const visitorActiveNames = members.filter(m => m.visitors > 0).map(m => `${memberName(m)}(${m.visitors}來賓)`).join(" 、 ") || "無";
+    const absentNames = members.filter(m => m.palms === "A").map(m => memberName(m)).join("、") || "無";
+    const leaveNames = members.filter(m => (m.palms === "M" || m.palms === "S")).map(m => memberName(m)).join("、") || "無";
+    const followRenewalList = members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷").map(m => `${memberName(m)}(${m.category}) - ${m.renewal}`).join("、") || "無";
+
     return [
-      {
-        id: 0,
-        title: "第一頁：封面：會後會追蹤",
-        category: "Cover",
-        content: `主體：${weekTitle}。小標：「數據不是責備、亦非監控；數據是用來幫我們及時發掘夥伴瓶頸的溫度計。」`,
-        notes: slideScripts[0] || ""
-      },
-      {
-        id: 1,
-        title: "第二頁：本週數據總覽",
-        category: "Metrics Overview",
-        content: `分會人數: ${stats.total}人 (目標: ${goals.memberTarget})、來賓人數: ${stats.visitors}人 (目標: ${goals.visitorTarget})、121交流: ${stats.oneToOne}次 (目標: ${goals.oneToOneTarget})、引薦成交: ${stats.referrals}張 (目標: ${goals.referralTarget})`,
-        notes: slideScripts[1] || ""
-      },
-      {
-        id: 2,
-        title: "第三頁：目標達成率 (不點名)",
-        category: "KPI Targets",
-        content: `1對1達成率: ${Math.round(stats.oneToOne / (goals.oneToOneTarget || 1) * 100)}%、引薦達成率: ${Math.round(stats.referrals / (goals.referralTarget || 1) * 100)}%、來賓達成率: ${Math.round(stats.visitors / (goals.visitorTarget || 1) * 100)}%`,
-        notes: slideScripts[2] || ""
-      },
-      {
-        id: 3,
-        title: "第四頁：達標表揚行動榜",
-        category: "Honor Roll",
-        content: `綠燈達標(121&引薦雙達標): ${greenNames}。來賓邀約模範: ${visitorActiveNames}`,
-        notes: slideScripts[3] || ""
-      },
-      {
-        id: 4,
-        title: "第五頁：紅黃綠燈健康分佈",
-        category: "Traffic Lights",
-        content: `綠燈: ${stats.green.length}人、黃燈: ${stats.yellow.length}人、紅燈: ${stats.red.length}人`,
-        notes: slideScripts[4] || ""
-      },
-      {
-        id: 5,
-        title: "第六頁：出席與請假追蹤",
-        category: "Attendance Tracker",
-        content: `分會出席率: ${100 - stats.absenceRate}%。請假名單: ${leaveNames}。缺席名單: ${absentNames}`,
-        notes: slideScripts[5] || ""
-      },
-      {
-        id: 6,
-        title: "第七頁：來賓到申請書轉換 funnel",
-        category: "Visitor Funnel",
-        content: `來賓總數: ${stats.visitors}人。預期申請書目標: ${goals.applicationTarget}張`,
-        notes: slideScripts[6] || ""
-      },
-      {
-        id: 7,
-        title: "第八頁：續約關懷 90 天提示",
-        category: "Renewal Forecast",
-        content: `已完成續約: ${stats.renewed}人。近期需追蹤與關懷名單: ${followRenewalList}`,
-        notes: slideScripts[7] || ""
-      },
-      {
-        id: 8,
-        title: "第九頁：會委會成員分工落實",
-        category: "Committee Alignment",
-        content: committeeText,
-        notes: slideScripts[8] || ""
-      },
-      {
-        id: 9,
-        title: "第十頁：副主席策略建言",
-        category: "VP Counsel",
-        content: `口號：「開口要溫度、出手要專業；公開看楷模、私下看託底。」`,
-        notes: slideScripts[9] || ""
-      },
-      {
-        id: 10,
-        title: "第十一頁：下週三大核心行動",
-        category: "Strategic Actions",
-        content: "1. 121指標推進：各組內循環，下週每人至少安排1場精確對位的121商業訪談。\n2. 來賓帶入精準化：結合核心組別主題日，定點引流。\n3. ROI面談關懷啟動：續約與數據專員排程90天輔導面談。",
-        notes: slideScripts[10] || ""
-      },
-      {
-        id: 11,
-        title: "第十二頁：結尾：溫度托底共識",
-        category: "Outro Motto",
-        content: "「數字只是結果，溫度決定結果！」攜手打造健康、有溫度且高產引薦的分會。",
-        notes: slideScripts[11] || ""
-      }
+      { id: 0,  title: "第一頁：封面：會後會追蹤",              category: "Cover",                content: `主體：${weekTitle}。小標：「數據不是責備、亦非監控；數據是用來幫我們及時發掘夥伴瓶頸的溫度計。」`, notes: slideScripts[0] || "" },
+      { id: 1,  title: "第二頁：本週數據總覽",                  category: "Metrics Overview",     content: `分會人數: ${stats.total}人 (目標: ${goals.memberTarget})、來賓人數: ${stats.visitors}人 (目標: ${goals.visitorTarget})、121交流: ${stats.oneToOne}次 (目標: ${goals.oneToOneTarget})、引薦成交: ${stats.referrals}張 (目標: ${goals.referralTarget})`, notes: slideScripts[1] || "" },
+      { id: 2,  title: "第三頁：目標達成率 (不點名)",           category: "KPI Targets",          content: `1對1達成率: ${Math.round(stats.oneToOne / (goals.oneToOneTarget || 1) * 100)}%、引薦達成率: ${Math.round(stats.referrals / (goals.referralTarget || 1) * 100)}%、來賓達成率: ${Math.round(stats.visitors / (goals.visitorTarget || 1) * 100)}%`, notes: slideScripts[2] || "" },
+      { id: 3,  title: "第四頁：達標表揚行動榜",                category: "Honor Roll",           content: `綠燈達標(121&引薦雙達標): ${greenNames}。來賓邀約模範: ${visitorActiveNames}`, notes: slideScripts[3] || "" },
+      { id: 4,  title: "第五頁：紅黃綠燈健康分佈",             category: "Traffic Lights",       content: `綠燈: ${stats.green.length}人、黃燈: ${stats.yellow.length}人、紅燈: ${stats.red.length}人`, notes: slideScripts[4] || "" },
+      { id: 5,  title: "第六頁：出席與請假追蹤",                category: "Attendance Tracker",   content: `分會出席率: ${stats.attendanceRate}%。請假名單: ${leaveNames}。缺席名單: ${absentNames}`, notes: slideScripts[5] || "" },
+      { id: 6,  title: "第七頁：來賓到申請書轉換 funnel",       category: "Visitor Funnel",       content: `來賓總數: ${stats.visitors}人。預期申請書目標: ${goals.applicationTarget}張`, notes: slideScripts[6] || "" },
+      { id: 7,  title: "第八頁：續約關懷 90 天提示",           category: "Renewal Forecast",     content: `已完成續約: ${stats.renewed}人。近期需追蹤與關懷名單: ${followRenewalList}`, notes: slideScripts[7] || "" },
+      { id: 8,  title: "第九頁：會委會成員分工落實",           category: "Committee Alignment",  content: committeeText, notes: slideScripts[8] || "" },
+      { id: 9,  title: "第十頁：副主席策略建言",               category: "VP Counsel",           content: `口號：「開口要溫度、出手要專業；公開看楷模、私下看託底。」`, notes: slideScripts[9] || "" },
+      { id: 10, title: "第十一頁：下週三大核心行動",           category: "Strategic Actions",    content: "1. 121指標推進。\n2. 來賓帶入精準化。\n3. ROI面談關懷啟動。", notes: slideScripts[10] || "" },
+      { id: 11, title: "第十二頁：結尾：溫度托底共識",         category: "Outro Motto",          content: "「數字只是結果，溫度決定結果！」攜手打造健康、有溫度且高產引薦的分會。", notes: slideScripts[11] || "" },
     ];
   };
 
   const exportToJson = () => {
     try {
       const exportData = {
-        weekTitle,
-        stage,
-        goals,
-        committeeText,
-        slideDeckMeta,
-        slideScripts,
+        weekTitle, stage, goals, committeeText,
+        slideDeckMeta, slideScripts,
         slides: getSlidesStructuredData(),
         membersCount: members.length,
-        exportedAt: new Date().toISOString()
+        exportedAt: new Date().toISOString(),
       };
-      
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      const cleanWeekTitle = weekTitle.replace(/[\/\|\\:\*\?"<>]/g, "_");
       link.href = url;
-      link.download = `BNI_簡報數據_${cleanWeekTitle}.json`;
+      link.download = `BNI_簡報數據_${weekTitle.replace(/[\/\|\\:\*\?"<>]/g, "_")}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -569,29 +786,30 @@ export default function SlidesPreviewer({
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        
         let importedScripts: string[] | null = null;
-        if (Array.isArray(json.slideScripts) && json.slideScripts.length === 12) {
+        if (Array.isArray(json.slideScripts) && json.slideScripts.length === 14) {
           importedScripts = json.slideScripts;
-        } else if (Array.isArray(json.slides) && json.slides.length === 12) {
+        } else if (Array.isArray(json.slideScripts) && json.slideScripts.length >= 12) {
+          const notes = [...json.slideScripts];
+          while (notes.length < 14) notes.push("");
+          importedScripts = notes.slice(0, 14);
+        } else if (Array.isArray(json.slides) && json.slides.length === 14) {
           importedScripts = json.slides.map((s: any) => s.notes || "");
         } else if (Array.isArray(json.slides)) {
           const notes = json.slides.map((s: any) => s.notes || "");
-          while (notes.length < 12) notes.push("");
-          importedScripts = notes.slice(0, 12);
+          while (notes.length < 14) notes.push("");
+          importedScripts = notes.slice(0, 14);
         }
-
         if (importedScripts) {
           setSlideScripts(importedScripts);
-          setSuccessMessage("成功匯入簡報數據！已成功載入您的 12 頁簡報講稿演辭與簡報備忘錄。");
+          setSuccessMessage("成功匯入簡報數據！已成功載入您的 14 頁簡報講稿演辭與簡報備忘錄。");
           setTimeout(() => setSuccessMessage(null), 5000);
         } else {
-          alert("匯入格式不正確：找不到符合條件的 12 頁簡報內容或備忘錄！");
+          alert("匯入格式不正確：找不到符合條件的簡報內容或備忘錄！");
         }
       } catch (err) {
         console.error(err);
@@ -599,19 +817,20 @@ export default function SlidesPreviewer({
       }
     };
     reader.readAsText(file);
-    e.target.value = ""; // Clear file
+    e.target.value = "";
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4" id="slides-previewer-container">
-      
-      {/* Upper header action row */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-white border border-slate-200 rounded-xl gap-2 shadow-2xs">
+
+      {/* Action row */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-white border border-slate-200 rounded-xl gap-2 shadow-sm">
         <div className="flex items-center gap-2">
           <Presentation className="w-4.5 h-4.5 text-rose-800 shrink-0" />
           <div>
-            <h4 className="font-bold text-slate-800 text-xs sm:text-sm">投影簡報投片 (第 {currentSlide + 1}/12 頁)</h4>
-            <p className="text-[11px] text-slate-400">風格：商務簡約、大字精準、對位 BNI 圓角金質簡報風格</p>
+            <h4 className="font-bold text-slate-800 text-xs sm:text-sm">投影簡報預覽 (第 {currentSlide + 1}/14 頁)</h4>
+            <p className="text-[11px] text-slate-400">商務簡約 · 大字精準 · BNI 金質簡報風格</p>
           </div>
         </div>
 
@@ -619,35 +838,30 @@ export default function SlidesPreviewer({
           <button
             onClick={exportToPowerpoint}
             disabled={pptGenerating}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg shadow-2xs transition w-full sm:w-auto cursor-pointer font-sans"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg shadow-sm transition w-full sm:w-auto cursor-pointer font-sans"
           >
             <Download className="w-3.5 h-3.5" />
-            {pptGenerating ? "正在生成..." : "下載真實簡報 .pptx"}
-          </button>
-          
-          <button
-            onClick={exportToJson}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-2xs transition w-full sm:w-auto cursor-pointer border border-slate-300 font-sans"
-          >
-            <FileJson className="w-3.5 h-3.5 text-slate-500" />
-            導出簡報數據 .json
+            {pptGenerating ? "正在生成..." : "下載 .pptx 簡報"}
           </button>
 
-          <label className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg shadow-2xs transition w-full sm:w-auto cursor-pointer border border-rose-200 font-sans">
-            <Upload className="w-3.5 h-3.5 text-rose-700 font-bold" />
-            <span>導入簡報數據 .json</span>
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleImportJson}
-              className="hidden"
-            />
+          <button
+            onClick={exportToJson}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm transition w-full sm:w-auto cursor-pointer border border-slate-300 font-sans"
+          >
+            <FileJson className="w-3.5 h-3.5 text-slate-500" />
+            導出 .json
+          </button>
+
+          <label className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg shadow-sm transition w-full sm:w-auto cursor-pointer border border-rose-200 font-sans">
+            <Upload className="w-3.5 h-3.5 text-rose-700" />
+            <span>導入 .json</span>
+            <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
           </label>
         </div>
       </div>
 
       {successMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between shadow-2xs">
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between shadow-sm">
           <span className="font-semibold flex items-center gap-2">
             <Check className="w-4 h-4 text-emerald-600 shrink-0" />
             {successMessage}
@@ -656,467 +870,594 @@ export default function SlidesPreviewer({
         </div>
       )}
 
-      {/* Main presentation console */}
+      {/* Main console */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        
-        {/* Left selector sidebar (3/12 width) */}
-        <div className="lg:col-span-3 space-y-1.5 max-h-[460px] overflow-y-auto pr-1">
+
+        {/* ── Sidebar (slide list) ─────────────────────────────────────────── */}
+        <div className="lg:col-span-3 space-y-1 max-h-[460px] overflow-y-auto pr-1">
           {slideDeckMeta.map((slide) => {
             const isSelected = slide.id === currentSlide;
+            const dotColor = CATEGORY_COLORS[slide.category] ?? "bg-slate-400";
             return (
               <button
                 key={slide.id}
                 onClick={() => setCurrentSlide(slide.id)}
-                className={`w-full text-left p-2.5 rounded-lg border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                  isSelected 
-                    ? "bg-rose-900 border-rose-900 text-white shadow-xs"
+                className={`w-full text-left p-2.5 rounded-lg border text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+                  isSelected
+                    ? "bg-rose-900 border-rose-900 text-white shadow-sm"
                     : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
                 }`}
               >
-                <span className="truncate pr-1">{slide.title}</span>
-                <span className={`px-1 py-0.5 rounded text-[9px] font-bold shrink-0 ${
-                  isSelected ? "bg-rose-800 text-rose-200" : "bg-slate-100 text-slate-500"
-                }`}>
-                  {slide.category}
+                {/* Slide number badge */}
+                <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center text-[9px] font-black ${isSelected ? "bg-rose-800 text-rose-200" : "bg-slate-100 text-slate-500"}`}>
+                  {slide.id + 1}
                 </span>
+                {/* Category dot */}
+                <span className={`shrink-0 w-2 h-2 rounded-full ${dotColor}`} />
+                {/* Title */}
+                <span className="truncate flex-1">{slide.title}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Center: Interactive widescreen 16:9 mockup (9/12 width) */}
+        {/* ── Canvas + script ─────────────────────────────────────────────── */}
         <div className="lg:col-span-9 space-y-4">
-          
-          {/* Simulated Slide Canvas */}
-          <div className="relative w-full aspect-video rounded-3xl overflow-hidden border border-slate-350 shadow-xl bg-slate-900 text-white select-none">
-            
-            {/* Slide 1: Welcome burgundy cover */}
+
+          {/* 16:9 slide canvas */}
+          <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#0f172a] text-white select-none">
+
+            {/* ── Slide 1: Cover ──────────────────────────────────────────── */}
             {currentSlide === 0 && (
-              <div className="absolute inset-0 bg-gradient-to-br from-rose-950 via-rose-900 to-amber-950 p-[7%] flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                  <span className="font-mono text-amber-400 font-extrabold tracking-widest text-sm uppercase">★ BNI 執事會常務工作會議</span>
-                  <span className="px-2.5 py-0.5 border border-amber-400/40 text-amber-400 font-bold text-[10px] rounded-full">副主席專用</span>
+              <div className="absolute inset-0 bg-gradient-to-br from-rose-950 via-[#4a0e1a] to-slate-900 flex flex-col justify-between p-[7%]">
+                {/* Decorative circle */}
+                <div className="absolute top-[-20%] right-[-12%] w-[55%] aspect-square rounded-full bg-rose-900/20 border border-rose-800/20" />
+
+                {/* BNI badge row */}
+                <div className="flex justify-between items-start relative z-10">
+                  <div className="flex items-center gap-2.5">
+                    <div className="bg-amber-500 rounded px-2 py-1 flex flex-col items-center leading-none">
+                      <span className="text-rose-950 font-black text-xs">BNI</span>
+                      <span className="text-rose-950 font-bold text-[9px]">長溙</span>
+                    </div>
+                    <span className="font-mono text-amber-400 font-bold tracking-wider text-[11px] uppercase">副主席週報</span>
+                  </div>
+                  <span className="px-2 py-0.5 border border-amber-400/40 text-amber-400 font-bold text-[9px] rounded-full">副主席專用</span>
                 </div>
-                
-                <div className="space-y-2">
-                  <span className="px-2.5 py-1 bg-amber-500 text-rose-950 font-black text-xs rounded-lg uppercase tracking-wide inline-block">
-                    {stage === "stage1" ? "第一階段: 總量看板" : stage === "stage2" ? "第二階段: 榮譽表揚" : "第三階段: 溫馨協助"}
-                  </span>
-                  <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+
+                {/* Main content */}
+                <div className="space-y-3 relative z-10">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-1 bg-amber-500 text-rose-950 font-black text-[10px] rounded-lg uppercase tracking-wide">
+                      {stageLabel}
+                    </span>
+                    <span className="px-2.5 py-1 bg-white/10 text-amber-300 font-bold text-[10px] rounded-lg border border-amber-400/30">
+                      第13屆 · {todayStr}
+                    </span>
+                  </div>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
                     {weekTitle}
                   </h1>
-                  <p className="text-sm sm:text-base text-amber-200/90 font-serif max-w-2xl leading-relaxed">
+                  <p className="text-xs sm:text-sm text-amber-200/90 font-serif leading-relaxed max-w-xl italic">
                     「 數據不是責備、亦非監控；數據是用來幫我們及時發掘夥伴瓶頸的溫度計。 」
                   </p>
                 </div>
 
-                <div className="border-t border-white/10 pt-3 flex items-center justify-between text-xs text-white/40">
-                  <span>BNI 金質分會 ｜ 樂施者得 Givers Gain</span>
-                  <span>彙整專員：會員委員會執事組</span>
+                {/* Footer */}
+                <div className="relative z-10 border-t border-white/10 pt-2 text-[10px] text-white/35 flex justify-between">
+                  <span>樂施者得 · Givers Gain · BNI 長溙分會 第13屆</span>
+                  <span>彙整：副主席</span>
                 </div>
               </div>
             )}
 
-            {/* Slide 2: Table Metrics Report */}
+            {/* ── Slide 2: Metrics Overview ────────────────────────────────── */}
             {currentSlide === 1 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">本週分會核心動能總覽</h2>
-                  <span className="text-xs text-amber-400">CHAPTER METRICS DAILY INDEX</span>
+              <DarkSlide>
+                <SlideHeader title="本週分會核心動能總覽" tag="METRICS OVERVIEW" tagColor="text-amber-400" />
+                <div className="grid grid-cols-2 gap-3 flex-1">
+                  {[
+                    { label: "分會人數",  val: stats.total,     unit: "人",  target: goals.memberTarget,     tLabel: "目前目標" },
+                    { label: "來賓人數",  val: stats.visitors,  unit: "人",  target: goals.visitorTarget,    tLabel: "本週目標" },
+                    { label: "累積 121",  val: stats.oneToOne,  unit: "次",  target: goals.oneToOneTarget,   tLabel: "本週目標" },
+                    { label: "引薦成交",  val: stats.referrals, unit: "張",  target: goals.referralTarget,   tLabel: "本週目標" },
+                  ].map((m, i) => {
+                    const pct = Math.min(100, percent(m.val, m.target));
+                    return (
+                      <div key={i} className="bg-white/8 border border-white/10 rounded-2xl p-3 flex flex-col justify-between hover:bg-white/12 transition">
+                        <div>
+                          <span className="text-slate-400 text-[10px] block">{m.label}</span>
+                          <p className="text-3xl font-black text-amber-400 leading-tight">{m.val}<span className="text-base font-bold ml-1">{m.unit}</span></p>
+                          <span className="text-[10px] text-slate-500">{m.tLabel}: {m.target} {m.unit}</span>
+                        </div>
+                        <div className="mt-2">
+                          <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                            <div className="bg-amber-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-[9px] text-amber-400/70 mt-0.5 block">{pct}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className="grid grid-cols-4 gap-4 my-2">
-                  <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-1">
-                    <span className="text-slate-400 text-xs block">分會人數</span>
-                    <p className="text-3xl font-black text-amber-400">{stats.total}人</p>
-                    <span className="text-[10px] text-slate-500 block">目前目標: {goals.memberTarget} 人</span>
-                  </div>
-                  <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-1">
-                    <span className="text-slate-400 text-xs block">來賓人數</span>
-                    <p className="text-3xl font-black text-amber-400">{stats.visitors}人</p>
-                    <span className="text-[10px] text-slate-500 block">本週目標: {goals.visitorTarget} 人</span>
-                  </div>
-                  <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-1">
-                    <span className="text-slate-400 text-xs block">累積 121</span>
-                    <p className="text-3xl font-black text-amber-400">{stats.oneToOne}次</p>
-                    <span className="text-[10px] text-slate-500 block">本週總目標: {goals.oneToOneTarget} 次</span>
-                  </div>
-                  <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-1">
-                    <span className="text-slate-400 text-xs block">引薦成交</span>
-                    <p className="text-3xl font-black text-amber-400">{stats.referrals}張</p>
-                    <span className="text-[10px] text-slate-500 block">本週總目標: {goals.referralTarget} 張</span>
-                  </div>
+                <div className="mt-2 p-2 bg-amber-500/10 rounded-xl text-[10px] text-amber-300 border border-amber-400/15 shrink-0">
+                  🎯 本週完成 121 共 {stats.oneToOne} 次 · 引薦 {stats.referrals} 張 · 來賓 {stats.visitors} 人
                 </div>
-
-                <div className="p-3.5 bg-white/5 rounded-xl text-xs text-amber-300 border border-amber-300/10">
-                  🎯 數據導引：目前分會會員總人數達標 {(percent(stats.total, goals.memberTarget))}%，本週完成商業交流共 {stats.oneToOne} 次、給予引薦金單 {stats.referrals} 次。
-                </div>
-              </div>
+              </DarkSlide>
             )}
 
-            {/* Slide 3: Achievement Gaps */}
+            {/* ── Slide 3: KPI Targets ─────────────────────────────────────── */}
             {currentSlide === 2 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">營運 KPI 整體目標達成率看板</h2>
-                  <span className="px-2 py-0.5 bg-rose-900/40 border border-rose-300/20 text-rose-300 font-bold text-[9px] rounded uppercase select-none">
+              <DarkSlide>
+                <div className="flex justify-between items-start mb-3 pb-2 border-b border-white/10 shrink-0">
+                  <h2 className="text-lg sm:text-xl font-black text-white">營運 KPI 目標達成看板</h2>
+                  <span className="px-2 py-0.5 bg-rose-900/40 border border-rose-300/20 text-rose-300 font-bold text-[9px] rounded uppercase shrink-0 ml-2">
                     第一階段: 不公布姓名
                   </span>
                 </div>
 
-                <div className="space-y-4 my-2">
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs sm:text-sm font-semibold">
-                      <span className="text-slate-300">1 對 1 交流推進狀況(次)</span>
-                      <span className="text-amber-400 font-bold">{stats.oneToOne} / {goals.oneToOneTarget} ({Math.round(stats.oneToOne / (goals.oneToOneTarget || 1) * 100)}%)</span>
-                    </div>
-                    <div className="w-full bg-white/5 h-2.5 rounded-full overflow-hidden">
-                      <div className="bg-amber-500 h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.round(stats.oneToOne / (goals.oneToOneTarget || 1) * 100))}%` }}></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs sm:text-sm font-semibold">
-                      <span className="text-slate-300">外部+內部引薦單累積量(張)</span>
-                      <span className="text-amber-400 font-bold">{stats.referrals} / {goals.referralTarget} ({Math.round(stats.referrals / (goals.referralTarget || 1) * 100)}%)</span>
-                    </div>
-                    <div className="w-full bg-white/5 h-2.5 rounded-full overflow-hidden">
-                      <div className="bg-rose-600 h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.round(stats.referrals / (goals.referralTarget || 1) * 100))}%` }}></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs sm:text-sm font-semibold">
-                      <span className="text-slate-300">本週邀約商務來賓(人)</span>
-                      <span className="text-amber-400 font-bold">{stats.visitors} / {goals.visitorTarget} ({Math.round(stats.visitors / (goals.visitorTarget || 1) * 100)}%)</span>
-                    </div>
-                    <div className="w-full bg-white/5 h-2.5 rounded-full overflow-hidden">
-                      <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.round(stats.visitors / (goals.visitorTarget || 1) * 100))}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-slate-400 border-t border-white/5 pt-2 italic">
-                  * 戰略：第一階段我們只比對總盤數字，不作個人點名考核。重在激發夥伴本週自發與對位 Power Team 進行引薦爆破！
-                </p>
-              </div>
-            )}
-
-            {/* Slide 4: Honour board (Winners focus) */}
-            {currentSlide === 3 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-emerald-400">本週金牌學長姊榮譽行動榜</h2>
-                  <span className="px-2 py-0.5 bg-green-950/55 border border-green-300/20 text-green-300 font-bold text-[9px] rounded uppercase">
-                    第二階段: 表揚公佈
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-5 my-2">
-                  <div className="bg-white/5 rounded-2xl p-4 border border-green-500/10 space-y-2">
-                    <span className="text-green-400 text-xs font-black tracking-wider block">🟢 121 與引薦雙達标模範</span>
-                    <div className="text-sm font-bold leading-relaxed text-slate-200">
-                      {stats.green.map(m => m.name).join("、") || "本週暫無雙達標學長"}
-                    </div>
-                    <p className="text-[10px] text-slate-500">大會上將由副主席安排頒獎儀式，並邀請其上台分享。</p>
-                  </div>
-
-                  <div className="bg-white/5 rounded-2xl p-4 border border-indigo-500/10 space-y-2">
-                    <span className="text-sky-400 text-xs font-black tracking-wider block">🟠 本週熱門邀約來賓榜</span>
-                    <div className="text-sm font-bold leading-relaxed text-slate-200">
-                      {members.filter(m => m.visitors > 0).map(m => `${m.name} (${m.visitors}位)`).join(" 、 ") || "本週無來賓"}
-                    </div>
-                    <p className="text-[10px] text-slate-500">引領來賓進入系統，為分會產業鏈注入全新活水。</p>
-                  </div>
-                </div>
-
-                <p className="text-xs text-white/50 bg-green-950/20 px-3 py-1.5 rounded-lg border border-green-500/5">
-                  📢 報告建言：在群組以及大會中「高度誇獎」達標學長，塑造正能量，讓其他學長自發想要靠近這個榮耀。
-                </p>
-              </div>
-            )}
-
-            {/* Slide 5: Traffic Light Distribution */}
-            {currentSlide === 4 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/15">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">紅黃綠燈學長姊分佈情況</h2>
-                  <span className="text-xs text-slate-400 font-mono">TRAFFIC LIGHT COMPOSITION</span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 my-2">
-                  <div className="bg-green-950/15 border border-green-500/20 rounded-2xl p-4 text-center space-y-1">
-                    <span className="text-2xl block">🟢</span>
-                    <span className="text-xs font-bold text-green-400">綠燈達標</span>
-                    <p className="text-3xl font-black text-slate-100">{stats.greenCount} 人</p>
-                    <span className="text-[10px] text-slate-400 font-medium">達分會 121 與引薦指標</span>
-                  </div>
-
-                  <div className="bg-amber-950/15 border border-amber-500/20 rounded-2xl p-4 text-center space-y-1">
-                    <span className="text-2xl block">🟡</span>
-                    <span className="text-xs font-bold text-amber-400">黃燈補強</span>
-                    <p className="text-3xl font-black text-slate-100">{stats.yellowCount} 人</p>
-                    <span className="text-[10px] text-slate-400 font-medium">單項不足 ｜ 本週推進重點</span>
-                  </div>
-
-                  <div className="bg-rose-950/15 border border-rose-500/20 rounded-2xl p-4 text-center space-y-1">
-                    <span className="text-2xl block">🔴</span>
-                    <span className="text-xs font-bold text-rose-400">紅燈關懷</span>
-                    <p className="text-3xl font-black text-slate-100">{stats.redCount} 人</p>
-                    <span className="text-[10px] text-slate-400 font-medium">急需援助 ｜ 禁止公開羞辱</span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-white/5 rounded-xl text-xs text-rose-300 border border-rose-400/10">
-                  ❤️ 溫馨叮嚀：會委會運作真諦 ──「紅燈是看見，不是指責」。紅燈學長將由輔導群私下進行暖心關懷，不公開責備。
-                </div>
-              </div>
-            )}
-
-            {/* Slide 6: Attendance Tracker */}
-            {currentSlide === 5 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">分會出席狀況與請假追蹤表</h2>
-                  <span className="text-xs text-rose-400 font-mono">ATTENDANCE COMPLIANCE</span>
-                </div>
-
-                <div className="grid grid-cols-12 gap-4 items-center my-1">
-                  
-                  {/* Gauge block (4/12) */}
-                  <div className="col-span-4 bg-white/5 rounded-2xl p-4 text-center border border-white/5">
-                    <span className="text-slate-400 text-xs block mb-1">分會本週出席率</span>
-                    <p className={`text-4xl font-extrabold ${stats.absenceRate >= goals.absenceWarningRate ? "text-rose-500 animate-pulse" : "text-green-400"}`}>
-                      {stats.attendanceRate}%
-                    </p>
-                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
-                      <div className={`h-full ${stats.absenceRate >= goals.absenceWarningRate ? "bg-rose-500" : "bg-green-400"}`} style={{ width: `${stats.attendanceRate}%` }}></div>
-                    </div>
-                    <span className="text-[10px] text-slate-500 block mt-1.5">警戒標準: {100 - goals.absenceWarningRate}% 以上</span>
-                  </div>
-
-                  {/* Details column (8/12) */}
-                  <div className="col-span-8 space-y-2">
-                    <div className="bg-white/5 rounded-xl p-3 border border-white/5 flex justify-between items-center text-sm">
-                      <span className="text-slate-300 font-bold">📋 本週請假學長姊：</span>
-                      <span className="text-amber-300 font-semibold">
-                        {members.filter(m => m.attendance === "請假").map(m => m.name).join("、") || "無"}
-                      </span>
-                    </div>
-
-                    <div className="bg-white/5 rounded-xl p-3 border border-white/5 flex justify-between items-center text-sm">
-                      <span className="text-slate-300 font-bold">⚠️ 本週無故缺席學長姊：</span>
-                      <span className="text-rose-400 font-semibold">
-                        {members.filter(m => m.attendance === "缺席").map(m => m.name).join("、") || "無"}
-                      </span>
-                    </div>
-                  </div>
-
-                </div>
-
-                <p className="text-xs text-slate-400 italic">
-                  💡 戰術執行：出席專員將偕同請假學者，落實「優質代理人機制」，以確保該行業的商務合作線路不中斷！
-                </p>
-              </div>
-            )}
-
-            {/* Slide 7: Funnel visual */}
-            {currentSlide === 6 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">來賓 ── 申請書高質感轉換漏斗</h2>
-                  <span className="text-xs text-amber-400 font-mono">CONVERSION FUNNEL</span>
-                </div>
-
-                <div className="space-y-4 my-2 flex flex-col justify-center items-center">
-                  
-                  {/* Visitor Bar */}
-                  <div className="w-10/12 bg-indigo-950/40 p-3 border border-indigo-500/20 rounded-xl flex justify-between items-center">
-                    <span className="text-xs sm:text-sm font-bold text-indigo-300">階段一 ｜ 蒞臨商務來賓人數</span>
-                    <span className="text-xl font-black text-white">{stats.visitors} 人</span>
-                  </div>
-
-                  {/* Funnel Arrow indicator */}
-                  <div className="text-slate-500 font-extrabold text-sm block leading-none">▼ 蒞會 48 小時內精確回訪面談</div>
-
-                  {/* Submit App Bar */}
-                  <div className="w-7/12 bg-amber-950/40 p-3 border border-amber-500/20 rounded-xl flex justify-between items-center">
-                    <span className="text-xs sm:text-sm font-bold text-amber-300">階段二 ｜ 評估提交申請書</span>
-                    <span className="text-xl font-black text-amber-400">{goals.applicationTarget} 本 (目標預估)</span>
-                  </div>
-
-                </div>
-
-                <p className="text-xs text-slate-400 text-center leading-relaxed">
-                  💡 來賓專員戰術：來賓非偶然，要引導成員精準邀約「行業核心鏈夥伴」，透過會委會溫馨面談以落實高效留存。
-                </p>
-              </div>
-            )}
-
-            {/* Slide 8: Renewal alerts */}
-            {currentSlide === 7 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">會員續約健康評估 90 天關懷預警</h2>
-                  <span className="text-xs text-rose-400 font-mono">MEMBERSHIP RETENTION</span>
-                </div>
-
-                <div className="space-y-3.5 my-2">
-                  <div className="flex justify-between text-xs text-slate-400 font-semibold border-b border-white/5 pb-1">
-                    <span>已完成續約學長：{stats.renewed} 人</span>
-                    <span className="text-rose-400">本會期需追蹤關懷：{stats.upcomingRenewal} 人</span>
-                  </div>
-
-                  <div className="bg-rose-950/15 border border-rose-500/15 rounded-2xl p-4 space-y-2">
-                    <span className="text-xs font-bold text-rose-300 tracking-wider block">🚨 近期需重點關懷/待追蹤學長名單</span>
-                    <div className="text-sm font-semibold leading-relaxed text-slate-200">
-                      {members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷").map(m => `${m.name} (${m.category} | ${m.renewal})`).join(" 、 ") || "本週無人需要特別關懷，非常健康！"}
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-400 block border-t border-white/5 pt-2 italic">
-                  💡 溫馨對策：續約非臨時起意。提早90天偕同對組 Power Team 開啟商業 ROI 精估面談，以實實在在的引薦業績促成續約。
-                </p>
-              </div>
-            )}
-
-            {/* Slide 9: Staff Map */}
-            {currentSlide === 8 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">會員委員會幹部成員責任崗位落實</h2>
-                  <span className="text-xs text-slate-400 font-mono">STAFF ALIGNMENT</span>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 my-2">
-                  {parsedCommittee.map((line, index) => {
-                    const parts = line.split("：");
+                <div className="space-y-4 flex-1">
+                  {[
+                    { label: "1 對 1 交流推進狀況（次）",     actual: stats.oneToOne,  target: goals.oneToOneTarget,  color: "from-violet-500 to-purple-600" },
+                    { label: "外部+內部引薦單累積量（張）",    actual: stats.referrals,  target: goals.referralTarget,  color: "from-rose-500 to-red-600" },
+                    { label: "本週邀約商務來賓（人）",        actual: stats.visitors,   target: goals.visitorTarget,   color: "from-orange-400 to-amber-500" },
+                    { label: "本週出席率（%）",               actual: stats.attendanceRate, target: 100,               color: "from-emerald-500 to-green-600" },
+                  ].map((b, i) => {
+                    const pct = Math.min(100, percent(b.actual, b.target));
                     return (
-                      <div key={index} className="bg-white/5 rounded-xl p-3 border border-white/5">
-                        <span className="text-[10px] text-amber-400 font-bold block">{parts[0] || "幹部崗位"}</span>
-                        <p className="text-sm font-bold text-slate-200 mt-1">{parts[1] || "未指定編制"}</p>
+                      <div key={i} className="space-y-1">
+                        <div className="flex justify-between text-xs font-bold">
+                          <span className="text-slate-300">{b.label}</span>
+                          <span className="text-amber-400">{b.actual} / {b.target} <span className="text-slate-400">({pct}%)</span></span>
+                        </div>
+                        <div className="relative h-6 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                          {/* 3D highlight stripe */}
+                          <div className="absolute inset-x-0 top-0 h-px bg-white/20 z-10" />
+                          {/* Filled portion */}
+                          <div className={`h-full rounded-full bg-gradient-to-r ${b.color} transition-all relative`} style={{width:`${Math.min(100,pct)}%`}}>
+                            {pct >= 20 && <span className="absolute right-2 top-0 bottom-0 flex items-center text-[10px] font-black text-white drop-shadow">{pct}%</span>}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
 
-                <p className="text-xs text-slate-400">
-                  💡 會委會運作真諦：副主席統領，出席、來賓、續約、121 專員分工帶領戰術。有責任、有溫度、有回報！
-                </p>
-              </div>
-            )}
-
-            {/* Slide 10: VP advises */}
-            {currentSlide === 9 && (
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-950 to-rose-950 p-[7%] flex flex-col justify-between">
-                <h2 className="text-xl sm:text-2xl font-bold tracking-widest text-amber-400 font-serif">副主席本週指導建言</h2>
-                
-                <div className="my-[4%] space-y-4">
-                  <h3 className="text-2xl sm:text-3.5xl font-black leading-tight text-white font-serif">
-                    「 開口要溫度、出手要專業；公開看楷模、私下看託底！ 」
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
-                    各位會委員夥伴，我們的責任不是找瑕疵，而是成為夥伴背後的托底力量。
-                    大會中我們公開、高調褒揚綠燈夥伴；私底下，我們由專員暖心約 121 紅燈學長，給予其產業配對的援助，讓大家在這個分會真正感受到商業的溫潤與豐收。
+                <div className="mt-3 p-2.5 bg-rose-950/30 rounded-xl border border-rose-400/15 shrink-0">
+                  <p className="text-[10px] text-slate-400 italic">
+                    ★ 戰略：第一階段只比對總盤數字，不作個人點名考核。重在激發夥伴本週自發進行引薦爆破！
                   </p>
                 </div>
-
-                <div className="text-[11px] text-white/30 border-t border-white/5 pt-2">
-                  副主席會後會語錄 ── 樂施者得 Givers Gain
-                </div>
-              </div>
+              </DarkSlide>
             )}
 
-            {/* Slide 11: Top 3 action plans */}
+            {/* ── Slide 4: Honor Board ─────────────────────────────────────── */}
+            {currentSlide === 3 && (
+              <DarkSlide>
+                <SlideHeader title="本週金牌夥伴榮譽行動榜" tag="HONOR ROLL" tagColor="text-emerald-400" />
+                <div className="grid grid-cols-2 gap-3 flex-1">
+                  <div className="bg-white/8 border border-green-500/20 rounded-2xl p-3 flex flex-col gap-2 hover:bg-white/12 transition">
+                    <span className="text-green-400 text-[10px] font-black tracking-wider">🟢 121 & 引薦 雙達標模範</span>
+                    <div className="text-sm font-bold leading-relaxed text-slate-200 flex-1">
+                      {stats.green.map(m => memberName(m)).join("、") || "本週暫無雙達標學長"}
+                    </div>
+                    <p className="text-[9px] text-slate-500">大會上安排頒獎儀式，邀請分享心法。</p>
+                  </div>
+
+                  <div className="bg-white/8 border border-sky-500/20 rounded-2xl p-3 flex flex-col gap-2 hover:bg-white/12 transition">
+                    <span className="text-sky-400 text-[10px] font-black tracking-wider">🟠 積極邀約來賓榜</span>
+                    <div className="text-sm font-bold leading-relaxed text-slate-200 flex-1">
+                      {members.filter(m => m.visitors > 0).map(m => `${memberName(m)} (${m.visitors}位)`).join(" 、 ") || "本週無來賓邀約"}
+                    </div>
+                    <p className="text-[9px] text-slate-500">引領來賓進入系統，注入活水！</p>
+                  </div>
+                </div>
+
+                <div className="mt-2 px-3 py-2 bg-emerald-950/25 rounded-lg border border-emerald-500/10 text-[10px] text-white/50 shrink-0">
+                  📢 報告建言：高調誇獎達標學長，塑造正能量，讓其他學長自發想要靠近這個榮耀。
+                </div>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 5: Group Rankings ──────────────────────────────────── */}
+            {currentSlide === 4 && (
+              <DarkSlide>
+                <SlideHeader title="六組積分競賽排行榜" tag="GROUP RANKINGS" tagColor="text-amber-400" />
+                <div className="flex-1 space-y-2 overflow-hidden">
+                  {groupRankings.map((g, i) => {
+                    const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i+1}.`;
+                    const barColor = i === 0 ? "from-amber-400 to-yellow-500" : i === 1 ? "from-slate-400 to-slate-300" : i === 2 ? "from-orange-700 to-orange-500" : "from-indigo-400 to-indigo-500";
+                    const pct = Math.min(100, Math.round((g.avg / 100) * 100));
+                    return (
+                      <div key={g.name} className="flex items-center gap-2">
+                        <span className="text-sm w-6 shrink-0 text-center">{medal}</span>
+                        <span className="text-xs text-white font-bold w-12 shrink-0">{g.name}</span>
+                        {/* Leader badge */}
+                        <span className="text-[9px] text-amber-300 bg-amber-900/40 border border-amber-500/30 rounded px-1.5 py-0.5 shrink-0 font-bold">
+                          組長 {g.leader}
+                        </span>
+                        <div className="flex-1 h-6 bg-white/5 rounded-full overflow-hidden relative">
+                          <div className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all`} style={{width:`${pct}%`}}>
+                            <span className="absolute right-2 top-0 bottom-0 flex items-center text-[10px] font-black text-white/90">{g.avg}分</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-green-400 shrink-0 w-14 text-right">🟢{g.green}/{g.total}達標</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Leader encouragement section */}
+                <div className="mt-2 bg-amber-900/20 border border-amber-500/20 rounded-xl p-2.5">
+                  <p className="text-[10px] text-amber-300 font-bold mb-1">🏆 本週組長辛苦了！感謝各組領袖的付出</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {GROUPS.map(g => (
+                      <span key={g.name} className="text-[9px] bg-amber-500/20 border border-amber-400/30 text-amber-200 rounded-lg px-2 py-0.5 font-bold">
+                        {g.name} {g.leaderFullName}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 6: Traffic Lights ──────────────────────────────────── */}
+            {currentSlide === 5 && (
+              <DarkSlide>
+                <SlideHeader title="紅黃綠燈夥伴分佈情況" tag="TRAFFIC LIGHTS" tagColor="text-slate-400" />
+                <div className="grid grid-cols-3 gap-3 flex-1">
+                  {[
+                    { emoji: "🟢", label: "綠燈達標", count: stats.green.length,  note: "達 121 & 引薦指標", border: "border-green-500/25", bg: "bg-green-950/20", numColor: "text-green-300" },
+                    { emoji: "🟡", label: "黃燈補強", count: stats.yellow.length, note: "單項不足 · 重點推進", border: "border-amber-500/25", bg: "bg-amber-950/20",  numColor: "text-amber-300" },
+                    { emoji: "🔴", label: "紅燈關懷", count: stats.red.length,   note: "急需援助 · 禁止公開", border: "border-rose-500/25",  bg: "bg-rose-950/20",   numColor: "text-rose-300"  },
+                  ].map((l, i) => (
+                    <div key={i} className={`${l.bg} border ${l.border} rounded-2xl p-3 text-center flex flex-col items-center justify-between hover:brightness-110 transition`}>
+                      <span className="text-xl">{l.emoji}</span>
+                      <div>
+                        <span className={`text-[10px] font-black block mb-1 ${l.numColor}`}>{l.label}</span>
+                        <p className={`text-3xl font-black text-slate-100`}>{l.count} <span className="text-sm font-bold">人</span></p>
+                      </div>
+                      <span className="text-[9px] text-slate-400 font-medium">{l.note}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Distribution bar */}
+                {(() => {
+                  const tot = (stats.green.length + stats.yellow.length + stats.red.length) || 1;
+                  const gP = stats.green.length / tot;
+                  const yP = stats.yellow.length / tot;
+                  return (
+                    <div className="mt-3 w-full h-2 rounded-full overflow-hidden flex shrink-0">
+                      <div className="bg-green-500 h-full transition-all" style={{ width: `${gP * 100}%` }} />
+                      <div className="bg-amber-500 h-full transition-all" style={{ width: `${yP * 100}%` }} />
+                      <div className="bg-rose-600 h-full flex-1 transition-all" />
+                    </div>
+                  );
+                })()}
+
+                <div className="mt-2 p-2 bg-rose-950/20 rounded-xl border border-rose-400/10 text-[10px] text-rose-300/70 shrink-0">
+                  ❤️ 紅燈是看見，不是指責。由輔導群私下暖心關懷，拒絕公開羞辱。
+                </div>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 7: PALMS Attendance Analysis ──────────────────────── */}
+            {currentSlide === 6 && (
+              <DarkSlide>
+                <SlideHeader title="PALMS 出席 & 燈號分析" tag="ATTENDANCE ANALYSIS" tagColor="text-sky-400" />
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  {/* Left: PALMS distribution */}
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[10px] font-black text-sky-300 mb-2">PALMS 出席分佈</p>
+                    {/* Donut-like bar */}
+                    <div className="space-y-1.5">
+                      {[
+                        { label:"P 出席", count: members.filter(m=>m.palms==="P").length, color:"bg-green-500", text:"text-green-400" },
+                        { label:"L 遲到", count: members.filter(m=>m.palms==="L").length, color:"bg-amber-400", text:"text-amber-400" },
+                        { label:"A 缺席", count: members.filter(m=>m.palms==="A").length, color:"bg-red-500", text:"text-red-400" },
+                        { label:"M 病假", count: members.filter(m=>m.palms==="M").length, color:"bg-slate-400", text:"text-slate-400" },
+                        { label:"S 代理人", count: members.filter(m=>m.palms==="S").length, color:"bg-purple-500", text:"text-purple-400" },
+                      ].map(p => (
+                        <div key={p.label} className="flex items-center gap-2">
+                          <span className={`text-[9px] w-12 shrink-0 ${p.text} font-bold`}>{p.label}</span>
+                          <div className="flex-1 h-3 bg-white/5 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${p.color}`} style={{width:`${stats.total > 0 ? (p.count/stats.total)*100 : 0}%`}} />
+                          </div>
+                          <span className={`text-[10px] font-black ${p.text} w-4`}>{p.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-slate-500 mt-2">總人數 {stats.total} 人</p>
+                  </div>
+                  {/* Right: traffic light distribution */}
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[10px] font-black text-lime-300 mb-2">KPI 紅黃綠燈分佈</p>
+                    <div className="space-y-2">
+                      {[
+                        { label:"🟢 綠燈達標", count: stats.green.length, color:"bg-green-500", text:"text-green-400", note:"121+引薦達標" },
+                        { label:"🟡 黃燈補強", count: stats.yellow.length, color:"bg-amber-400", text:"text-amber-400", note:"單項不足" },
+                        { label:"🔴 紅燈關懷", count: stats.red.length, color:"bg-red-500", text:"text-red-400", note:"需私下輔導" },
+                      ].map(t => (
+                        <div key={t.label} className="flex items-center gap-2">
+                          <span className={`text-[9px] w-14 shrink-0 font-bold ${t.text}`}>{t.label}</span>
+                          <div className="flex-1 h-4 bg-white/5 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${t.color}`} style={{width:`${stats.total > 0 ? (t.count/stats.total)*100 : 0}%`}} />
+                          </div>
+                          <span className={`text-[11px] font-black ${t.text} w-4`}>{t.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-slate-500 mt-3 italic">{careMessage}</p>
+                  </div>
+                </div>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 8: Attendance Tracker ──────────────────────────────── */}
+            {currentSlide === 7 && (
+              <DarkSlide>
+                <SlideHeader title="出席狀況與請假追蹤表" tag="ATTENDANCE COMPLIANCE" tagColor="text-rose-400" />
+                <div className="grid grid-cols-12 gap-3 flex-1">
+                  {/* Gauge */}
+                  <div className="col-span-4 bg-white/8 rounded-2xl p-3 border border-white/10 flex flex-col items-center justify-center gap-2 hover:bg-white/12 transition">
+                    <span className="text-slate-400 text-[10px]">本週出席率</span>
+                    <p className={`text-4xl font-extrabold leading-none ${stats.absenceRate >= goals.absenceWarningRate ? "text-rose-400" : "text-green-400"}`}>
+                      {stats.attendanceRate}%
+                    </p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={stats.absenceRate >= goals.absenceWarningRate ? "bg-rose-500 h-full rounded-full" : "bg-green-400 h-full rounded-full"}
+                        style={{ width: `${stats.attendanceRate}%` }}
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-500">警戒: ≥{100 - goals.absenceWarningRate}%</span>
+                  </div>
+
+                  {/* Info panels */}
+                  <div className="col-span-8 flex flex-col gap-2.5">
+                    <div className="bg-white/8 rounded-xl p-3 border border-white/10 flex justify-between items-start gap-2 hover:bg-white/12 transition flex-1">
+                      <span className="text-slate-300 font-bold text-xs shrink-0">🔄 M病假 / S代理人：</span>
+                      <span className="text-amber-300 font-semibold text-xs text-right">
+                        {members.filter(m => m.palms === "M" || m.palms === "S").map(m => memberName(m)).join("、") || "無"}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/8 rounded-xl p-3 border border-white/10 flex justify-between items-start gap-2 hover:bg-white/12 transition flex-1">
+                      <span className="text-slate-300 font-bold text-xs shrink-0">⚠️ 無故缺席夥伴：</span>
+                      <span className="text-rose-400 font-semibold text-xs text-right">
+                        {members.filter(m => m.palms === "A").map(m => memberName(m)).join("、") || "無"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2 p-2 bg-white/5 rounded-xl border border-white/5 text-[10px] text-slate-400 italic shrink-0">
+                  💡 出席專員落實「優質代理人機制」，確保行業商務線路不中斷！
+                </div>
+                <p className="text-[10px] text-amber-200/70 italic mt-1 border-t border-white/5 pt-1">{careMessage}</p>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 9: Visitor Funnel ──────────────────────────────────── */}
+            {currentSlide === 8 && (
+              <DarkSlide>
+                <SlideHeader title="來賓 → 申請書高質感轉換漏斗" tag="CONVERSION FUNNEL" tagColor="text-amber-400" />
+                <div className="flex flex-col items-center justify-center gap-4 flex-1">
+                  <div className="w-10/12 bg-indigo-950/40 border border-indigo-500/25 rounded-xl p-3 flex justify-between items-center hover:bg-indigo-950/55 transition">
+                    <div>
+                      <span className="text-[10px] font-bold text-indigo-300 block">階段一 ｜ 蒞臨商務來賓人數</span>
+                      <span className="text-[9px] text-slate-500">本週實際到場統計</span>
+                    </div>
+                    <span className="text-2xl font-black text-white">{stats.visitors} <span className="text-sm font-bold">人</span></span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-0.5 text-slate-500 text-xs">
+                    <span>▼</span>
+                    <span className="text-[10px]">48 小時內精確回訪面談</span>
+                    <span>▼</span>
+                  </div>
+
+                  <div className="w-7/12 bg-amber-950/40 border border-amber-500/25 rounded-xl p-3 flex justify-between items-center hover:bg-amber-950/55 transition">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-300 block">階段二 ｜ 評估提交申請書</span>
+                      <span className="text-[9px] text-slate-500">本期週均目標</span>
+                    </div>
+                    <span className="text-2xl font-black text-amber-400">{goals.applicationTarget} <span className="text-sm font-bold">本</span></span>
+                  </div>
+                </div>
+
+                <div className="mt-2 p-2 bg-white/5 rounded-xl border border-white/5 text-[10px] text-slate-400 text-center italic shrink-0">
+                  💡 來賓專員戰術：精準邀約「行業核心鏈夥伴」，透過溫馨面談落實高效留存。
+                </div>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 10: Renewal ────────────────────────────────────────── */}
+            {currentSlide === 9 && (
+              <DarkSlide>
+                <SlideHeader title="會員續約健康評估 90 天關懷" tag="MEMBERSHIP RETENTION" tagColor="text-rose-400" />
+                <div className="flex gap-3 mb-3 shrink-0">
+                  <div className="flex-1 bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-2.5 text-center hover:bg-emerald-950/45 transition">
+                    <span className="text-[10px] text-emerald-400 block font-bold">✅ 已完成續約</span>
+                    <p className="text-2xl font-black text-slate-100">{stats.renewed} <span className="text-sm font-bold">人</span></p>
+                  </div>
+                  <div className="flex-1 bg-rose-950/30 border border-rose-500/20 rounded-xl p-2.5 text-center hover:bg-rose-950/45 transition">
+                    <span className="text-[10px] text-rose-400 block font-bold">⚠️ 需追蹤關懷</span>
+                    <p className="text-2xl font-black text-slate-100">{stats.upcomingRenewal} <span className="text-sm font-bold">人</span></p>
+                  </div>
+                </div>
+
+                <div className="bg-rose-950/20 border border-rose-500/15 rounded-2xl p-3 flex-1 flex flex-col gap-1.5 overflow-hidden hover:bg-rose-950/30 transition">
+                  <span className="text-[10px] font-black text-rose-300 tracking-wider shrink-0">🚨 近期重點關懷 / 待追蹤學長</span>
+                  <div className="text-xs font-semibold leading-relaxed text-slate-200 overflow-hidden">
+                    {members.filter(m => m.renewal === "待追蹤" || m.renewal === "需要關懷")
+                      .map(m => `${memberName(m)} (${m.category} | ${m.renewal})`).join(" 、 ") || "本週無人需要特別關懷，非常健康！"}
+                  </div>
+                </div>
+
+                <div className="mt-2 p-2 bg-white/5 rounded-xl border border-white/5 text-[10px] text-slate-400 italic shrink-0">
+                  💡 提早 90 天偕同 Power Team 開啟商業 ROI 精估面談，輔助長久留存。
+                </div>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 11: Committee ──────────────────────────────────────── */}
             {currentSlide === 10 && (
-              <div className="absolute inset-0 bg-slate-900 p-[6%] flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <h2 className="text-xl sm:text-2xl font-black text-white">下週三大分會核心戰略行動方針</h2>
-                  <span className="text-xs text-amber-400">ACTION ITEMS</span>
+              <DarkSlide>
+                <SlideHeader title="會委會幹部責任崗位落實" tag="STAFF ALIGNMENT" tagColor="text-slate-400" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 flex-1 overflow-y-auto">
+                  {parsedCommittee.map((line, i) => {
+                    const parts = line.split("：");
+                    return (
+                      <div key={i} className="bg-white/8 border border-white/10 rounded-xl p-2.5 hover:bg-white/12 transition">
+                        <span className="text-[9px] text-amber-400 font-black block mb-1">{parts[0] || "幹部崗位"}</span>
+                        <p className="text-xs font-bold text-slate-200">{parts[1] || "未指定"}</p>
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className="space-y-3 my-2 text-xs sm:text-sm">
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex items-start gap-2">
-                    <span className="px-2 py-0.5 bg-rose-900 text-amber-400 font-black rounded">1</span>
-                    <div className="space-y-0.5">
-                      <span className="font-bold text-slate-100">核心組別（建材/行銷）發起 1 對 1 配對專攻</span>
-                      <p className="text-[11px] text-slate-400">協助黃燈、紅燈學長對接產業链，透過高效121，直接激活商業氣氛。</p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex items-start gap-2">
-                    <span className="px-2 py-0.5 bg-rose-900 text-amber-400 font-black rounded">2</span>
-                    <div className="space-y-0.5">
-                      <span className="font-bold text-slate-100">來賓邀約精準度檢核與精細訪談開展</span>
-                      <p className="text-[11px] text-slate-400">大會結束後 48 小時內進行溫馨高質感回訪，引導來賓看見商業紅利。</p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex items-start gap-2">
-                    <span className="px-2 py-0.5 bg-rose-900 text-amber-400 font-black rounded">3</span>
-                    <div className="space-y-0.5">
-                      <span className="font-bold text-slate-100">提早 90 天會員 ROI 精算面談排程</span>
-                      <p className="text-[11px] text-slate-400">續約專員與數據專員近期主動會同，避免到期被動流失，輔佐長久留存。</p>
-                    </div>
-                  </div>
+                <div className="mt-2 text-[10px] text-slate-500 shrink-0">
+                  💡 有責任、有溫度、有回報！副主席統領各專員分工帶領戰術。
                 </div>
+              </DarkSlide>
+            )}
 
-                <span className="text-xs text-slate-500 italic block">
-                  * 攜手把控執行細節，下週大會看成果！
-                </span>
+            {/* ── Slide 12: VP Strategy ────────────────────────────────────── */}
+            {currentSlide === 11 && (
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-950 to-rose-950 flex flex-col p-[7%]">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-rose-600" />
+                <h2 className="text-base sm:text-lg font-bold tracking-widest text-amber-400 font-serif mb-4 shrink-0">
+                  副主席本週指導建言
+                </h2>
+                <div className="flex-1 flex flex-col justify-center gap-4">
+                  <h3 className="text-xl sm:text-2xl font-black leading-snug text-white font-serif">
+                    「 開口要溫度、出手要專業；公開看楷模、私下看託底！ 」
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                    各位會委員夥伴，我們的責任不是找瑕疵，而是成為夥伴背後的托底力量。
+                    大會中我們公開、高調褒揚綠燈夥伴；私底下，由專員暖心約 121 紅燈學長，
+                    給予其產業配對的援助，讓大家在這個分會真正感受到商業的溫潤與豐收。
+                  </p>
+                </div>
+                {/* Footer */}
+                <div className="absolute bottom-0 left-0 right-0 bg-white/5 border-t border-white/5 text-[9px] text-white/30 px-[6%] py-1.5 flex justify-between">
+                  <span>{weekTitle}</span>
+                  <span>BNI 長溙分會 第13屆</span>
+                  <span>{todayStr}</span>
+                </div>
               </div>
             )}
 
-            {/* Slide 12: Cohesion banner */}
-            {currentSlide === 11 && (
-              <div className="absolute inset-0 bg-gradient-to-br from-rose-950 via-rose-900 to-amber-950 p-[8%] flex flex-col justify-between text-center items-center">
-                <span className="text-amber-400 font-bold uppercase tracking-widest text-xs">★ BNI 會會後會精神精神</span>
-                
-                <div className="space-y-3.5 my-auto">
-                  <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight text-white font-serif">
+            {/* ── Slide 13: Action Items ───────────────────────────────────── */}
+            {currentSlide === 12 && (
+              <DarkSlide>
+                <div className="flex justify-between items-start mb-3 pb-2 border-b border-white/10 shrink-0">
+                  <h2 className="text-lg sm:text-xl font-black text-white">下週三大核心戰略行動方針</h2>
+                  <span className="text-[10px] text-amber-400 font-mono shrink-0 ml-2">ACTION ITEMS</span>
+                </div>
+
+                <div className="space-y-3 flex-1">
+                  {[
+                    {
+                      n: "1",
+                      title: "121 指標推進",
+                      desc: "核心組別發起 1 對 1 配對專攻，協助黃/紅燈學長對接產業鏈，每人下週至少 1 場精確對位的 121 商業訪談。",
+                    },
+                    {
+                      n: "2",
+                      title: "來賓邀約精準度提升",
+                      desc: "結合建材/行銷等核心組別發起「產業主題日」，大會後 48 小時內溫馨高質感回訪，引導來賓看見商業紅利。",
+                    },
+                    {
+                      n: "3",
+                      title: "ROI 面談關懷啟動",
+                      desc: "提早 90 天，續約與數據專員近期主動排程「90天輔導面談」，以具體成交算盤輔佐長久留存。",
+                    },
+                  ].map((a) => (
+                    <div key={a.n} className="p-3 bg-white/8 border border-white/10 rounded-xl flex items-start gap-3 hover:bg-white/12 transition">
+                      <span className="shrink-0 w-6 h-6 bg-rose-900 text-amber-400 font-black rounded flex items-center justify-center text-xs">{a.n}</span>
+                      <div>
+                        <span className="font-bold text-slate-100 text-xs block mb-0.5">{a.title}</span>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">{a.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <span className="text-[10px] text-slate-500 italic shrink-0 mt-1 block">
+                  ★ 攜手把控執行細節，下週大會看成果！
+                </span>
+              </DarkSlide>
+            )}
+
+            {/* ── Slide 14: Closing ────────────────────────────────────────── */}
+            {currentSlide === 13 && (
+              <div className="absolute inset-0 bg-gradient-to-br from-rose-950 via-[#4a0e1a] to-slate-900 flex flex-col justify-between items-center p-[8%] text-center">
+                {/* Decorative circle */}
+                <div className="absolute bottom-[-15%] left-[-8%] w-[45%] aspect-square rounded-full bg-rose-900/15 border border-rose-800/15" />
+
+                <span className="text-amber-400 font-bold uppercase tracking-widest text-[10px] relative z-10">
+                  ★ BNI 會後會精神
+                </span>
+
+                <div className="space-y-3.5 my-auto relative z-10">
+                  <h2 className="text-3xl sm:text-4xl font-black tracking-tight leading-tight text-white font-serif">
                     「 數字只是結果，溫度決定結果！」
                   </h2>
-                  <p className="text-xs sm:text-sm text-amber-200/80 max-w-2xl mx-auto leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-amber-200/80 max-w-lg mx-auto leading-relaxed">
                     健康的分會不只是引薦引擎，更是一個彼此照拂、精緻契合的信任網路。
                     感謝每一位幹部與專員的無私付出，用愛托底、用數據推進商業成功！
                   </p>
                 </div>
 
-                <div className="text-xs text-white/35">
+                <div className="text-[10px] text-white/35 relative z-10">
                   副主席會後會結語 ── 感謝大家的付出，散會！ ｜ Givers Gain 樂施者得
                 </div>
               </div>
             )}
 
-            {/* Pagination overlays (floating slightly) */}
-            <div className="absolute bottom-5 right-5 flex gap-2 select-none z-10">
+            {/* ── Navigation: prev/next buttons ───────────────────────────── */}
+            <div className="absolute bottom-5 right-5 flex gap-2 select-none z-20">
               <button
                 onClick={handlePrev}
                 disabled={currentSlide === 0}
-                className="w-10 h-10 rounded-full bg-slate-800/80 hover:bg-slate-700/80 disabled:opacity-40 disabled:hover:bg-slate-800/80 border border-white/10 flex items-center justify-center transition cursor-pointer"
+                className="w-9 h-9 rounded-full bg-slate-800/80 hover:bg-slate-700/80 disabled:opacity-30 border border-white/15 flex items-center justify-center transition cursor-pointer"
               >
-                <ChevronLeft className="w-5 h-5 text-white" />
+                <ChevronLeft className="w-4 h-4 text-white" />
               </button>
               <button
                 onClick={handleNext}
-                disabled={currentSlide === 11}
-                className="w-10 h-10 rounded-full bg-slate-800/80 hover:bg-slate-700/80 disabled:opacity-40 disabled:hover:bg-slate-800/80 border border-white/10 flex items-center justify-center transition cursor-pointer"
+                disabled={currentSlide === 13}
+                className="w-9 h-9 rounded-full bg-slate-800/80 hover:bg-slate-700/80 disabled:opacity-30 border border-white/15 flex items-center justify-center transition cursor-pointer"
               >
-                <ChevronRight className="w-5 h-5 text-white" />
+                <ChevronRight className="w-4 h-4 text-white" />
               </button>
             </div>
 
+            {/* ── Progress dots (bottom center) ────────────────────────────── */}
+            <div className="absolute bottom-5 left-0 right-0 flex justify-center gap-1.5 select-none z-20 pointer-events-none px-14">
+              {Array.from({ length: 14 }, (_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentSlide(i)}
+                  className={`rounded-full transition-all pointer-events-auto cursor-pointer ${
+                    i === currentSlide
+                      ? "w-4 h-3 bg-amber-400"
+                      : "w-2 h-2 bg-white/20 hover:bg-white/40 mt-0.5"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
 
-          {/* Bottom section: Editable Speaking Script note section */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
+          {/* Script editor */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
               <div className="flex items-center gap-1.5">
-                <Volume2 className="w-4 h-4 text-rose-700 animate-pulse shrink-0" />
+                <Volume2 className="w-4 h-4 text-rose-700 shrink-0" />
                 <div>
                   <h4 className="font-bold text-slate-800 text-[11px] sm:text-xs">【 副主席口述講稿 & 簡報備忘錄 】</h4>
-                  <p className="text-[10px] text-slate-400">大會會後發言逐字對稿（支持於下方編輯，直接存入匯出的 PowerPoint 備忘錄）</p>
+                  <p className="text-[10px] text-slate-400">大會發言逐字對稿（可編輯，直接寫入 .pptx 備忘錄）</p>
                 </div>
               </div>
 
@@ -1132,13 +1473,12 @@ export default function SlidesPreviewer({
             <textarea
               value={slideScripts[currentSlide]}
               onChange={handleScriptChange}
-              className="w-full h-24 p-2.5 border border-slate-200 rounded-lg text-xs leading-relaxed text-slate-700 outline-none bg-slate-50/50 focus:bg-white focus:border-rose-700 transition font-sans"
+              className="w-full h-24 p-2.5 border border-slate-200 rounded-lg text-xs leading-relaxed text-slate-700 outline-none bg-slate-50/50 focus:bg-white focus:border-rose-700 transition font-sans resize-none"
               placeholder="請輸入此張投影片的簡報口述講稿..."
             />
           </div>
 
         </div>
-
       </div>
     </div>
   );
