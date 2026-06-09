@@ -296,6 +296,15 @@ body {
 }
 .c-empty { background: transparent; border: 2px dashed #e2e8f0; }
 
+/* 缺席 */
+.c-absent {
+  background: transparent;
+  border: 2px dashed #fca5a5;
+  color: #f87171;
+}
+.c-absent .n { font-size: .75rem; font-weight: 700; opacity: .7; }
+.c-absent::before { display: none; }
+
 /* ── SPECIAL TABLE ACCENTS ── */
 .table-card.t-president { border-top: 3px solid var(--orange); background: linear-gradient(to bottom, #fff7ed, white); }
 .table-card.t-officer   { border-top: 3px solid var(--orange3); background: linear-gradient(to bottom, #fff7ed, white); }
@@ -582,12 +591,19 @@ function mkSpecialOval(name, role) {
 // t=桌index, s=欄('L'|'R'), p=位置index（可用於指定位置互換）
 function mkOval(cls, name, role, t, s, p) {
   const sub = (role && role !== '夥伴會員') ? `<span class="r">${role}</span>` : '';
-  const coord = (t !== undefined) ? ` data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"` : '';
+  const coord = (t !== undefined)
+    ? ` data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" oncontextmenu="seatRemove(this);return false;"`
+    : '';
   return `<div class="oval ${cls}"${coord}><span class="n">${name}</span>${sub}</div>`;
 }
 function guestOval(n, t, s, p) {
-  const coord = (t !== undefined) ? ` data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"` : '';
+  const coord = (t !== undefined)
+    ? ` data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" oncontextmenu="seatRemove(this);return false;"`
+    : '';
   return `<div class="oval c-guest"${coord}><span class="n">來賓${n}</span><span class="r">來賓</span></div>`;
+}
+function absentOval(t, s, p) {
+  return `<div class="oval c-absent" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" oncontextmenu="seatRemove(this);return false;" title="右鍵可還原"><span class="n">── 缺席 ──</span></div>`;
 }
 
 // ══════════════════════════════════════════════
@@ -668,6 +684,7 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
 function renderCol(colSeats, tIdx, side) {
   return colSeats.map((seat, p) => {
     if (!seat) return '';
+    if (seat._absent) return absentOval(tIdx, side, p);
     if (seat._guest) return guestOval(seat._guest, tIdx, side, p);
     return mkOval('c-member', seat.name, seat.role, tIdx, side, p);
   }).join('');
@@ -813,6 +830,33 @@ function seatClick(el) {
 
   _selectedEl.classList.remove('selected');
   _selectedEl = null;
+}
+
+// ══════════════════════════════════════════════
+// 右鍵：標記缺席 / 還原
+// ══════════════════════════════════════════════
+function seatRemove(el) {
+  // 如果有選取中的 oval，先取消選取
+  if (_selectedEl) { _selectedEl.classList.remove('selected'); _selectedEl = null; }
+
+  const t = +el.dataset.t, s = el.dataset.s, p = +el.dataset.p;
+
+  if (t === -1) {
+    // info oval：右鍵不做刪除
+    return;
+  }
+
+  const seat = _colData[t][s][p];
+  if (!seat) return;
+
+  if (seat._absent) {
+    // 已缺席 → 還原（需要記住原始資料）
+    _colData[t][s][p] = seat._original;
+  } else {
+    // 正常 → 標記缺席，保留原始資料
+    _colData[t][s][p] = { _absent: true, _original: seat };
+  }
+  redrawTableCard(t);
 }
 
 function onMemberChange(val) {
