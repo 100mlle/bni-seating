@@ -311,6 +311,46 @@ body {
   font-size: .42rem; opacity: .55; font-weight: 600;
 }
 
+/* ── 代理人面板 ── */
+.proxy-panel {
+  flex-shrink: 0; width: 120px;
+  background: white;
+  border: 1.5px solid #fecaca;
+  border-radius: 14px;
+  padding: 10px 8px;
+  box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 6px;
+  align-self: flex-start;
+}
+.proxy-panel-title {
+  font-size: .68rem; font-weight: 800; color: #dc2626;
+  text-align: center; letter-spacing: .06em;
+  padding-bottom: 6px;
+  border-bottom: 1.5px dashed #fecaca;
+}
+.proxy-panel-hint {
+  font-size: .6rem; color: #94a3b8; text-align: center;
+  line-height: 1.4;
+}
+.proxy-tag {
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border: 1px solid #fca5a5;
+  border-radius: 8px; padding: 4px 6px;
+  font-size: .78rem; font-weight: 800; color: #991b1b;
+  gap: 4px;
+}
+.proxy-tag-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proxy-tag-remove {
+  cursor: pointer; font-size: .9rem; line-height: 1;
+  opacity: .6; flex-shrink: 0;
+  transition: opacity .1s;
+}
+.proxy-tag-remove:hover { opacity: 1; }
+.proxy-panel-empty {
+  font-size: .62rem; color: #cbd5e1; text-align: center; padding: 4px 0;
+}
+
 /* ── PRINT ── */
 @media print {
   body { background: white; padding: 8px; }
@@ -369,7 +409,7 @@ body {
   <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(145deg,#ea580c,#9a3412);border-color:#fb923c"></div>榮譽（董顧/大使）</div>
 </div>
 
-<div class="floor">
+<div class="floor" id="floorWrap">
   <div class="info-col">
     <div id="infoOval0" class="info-oval editable-oval" data-t="-1" data-s="I" data-p="0" onclick="seatClick(this)" ondblclick="editInfoOval(this);event.stopPropagation()" title="單擊互換；雙擊編輯名字">
       <span class="oval-name" style="font-weight:900;font-size:1rem;line-height:1.1">陳裔潔</span>
@@ -425,6 +465,12 @@ body {
         </div>
       </div>
     </div>
+  </div>
+  <!-- 確定代理人面板 -->
+  <div class="proxy-panel" id="proxyPanel">
+    <div class="proxy-panel-title">✋ 確定代理</div>
+    <div class="proxy-panel-hint">右鍵人名<br>加入此處</div>
+    <div id="proxyList"></div>
   </div>
 </div>
 
@@ -559,6 +605,8 @@ let _infoSeats  = [
   { name:'陳裔潔', role:'電音控制' },
   { name:'資訊',   role:'' },
 ];
+// 確定代理人名單（name → true），排位時排除
+let _proxySet = {};
 
 // ══════════════════════════════════════════════
 // HELPERS
@@ -723,7 +771,7 @@ function calcNumTables(poolSize) {
 // ══════════════════════════════════════════════
 function shuffle() {
   const cap  = Math.min(memberCount, ROSTER.length);
-  _memberPool = rand(ROSTER.filter(m => !m.fix).slice(0, cap - 3));
+  _memberPool = rand(ROSTER.filter(m => !m.fix && !_proxySet[m.name]).slice(0, cap - 3));
 
   const numTables = calcNumTables(_memberPool.length);
 
@@ -741,6 +789,7 @@ function shuffle() {
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
   grid.style.gridTemplateColumns = '1fr 1fr';
+  renderProxyPanel();
 
   const now = new Date();
   const session = document.getElementById('sessionInput')?.value || '13';
@@ -825,30 +874,54 @@ function seatClick(el) {
 }
 
 // ══════════════════════════════════════════════
-// 右鍵：標記缺席 / 還原
+// 右鍵：加入/移出代理名單
 // ══════════════════════════════════════════════
 function seatRemove(el) {
-  // 如果有選取中的 oval，先取消選取
   if (_selectedEl) { _selectedEl.classList.remove('selected'); _selectedEl = null; }
 
   const t = +el.dataset.t, s = el.dataset.s, p = +el.dataset.p;
-
-  if (t === -1) {
-    // info oval：右鍵不做刪除
-    return;
-  }
+  if (t === -1) return; // info oval 不處理
 
   const seat = _colData[t][s][p];
-  if (!seat) return;
+  if (!seat || seat._absent || seat._guest) return;
 
-  if (seat._absent) {
-    // 已缺席 → 還原（需要記住原始資料）
-    _colData[t][s][p] = seat._original;
-  } else {
-    // 正常 → 標記缺席，保留原始資料
-    _colData[t][s][p] = { _absent: true, _original: seat };
-  }
+  // 加入代理名單，座位標記為 absent
+  _proxySet[seat.name] = seat;
+  _colData[t][s][p] = { _absent: true, _original: seat };
   redrawTableCard(t);
+  renderProxyPanel();
+}
+
+function renderProxyPanel() {
+  const list = document.getElementById('proxyList');
+  const names = Object.keys(_proxySet);
+  if (!names.length) {
+    list.innerHTML = '<div class="proxy-panel-empty">尚無代理</div>';
+    return;
+  }
+  list.innerHTML = names.map(name => `
+    <div class="proxy-tag">
+      <span class="proxy-tag-name">${name}</span>
+      <span class="proxy-tag-remove" onclick="restoreProxy('${name}')" title="還原到座位">↩</span>
+    </div>
+  `).join('');
+}
+
+function restoreProxy(name) {
+  delete _proxySet[name];
+  // 在 _colData 找到對應缺席格還原
+  for (let t = 0; t < _colData.length; t++) {
+    for (const s of ['L','R']) {
+      for (let p = 0; p < _colData[t][s].length; p++) {
+        const seat = _colData[t][s][p];
+        if (seat && seat._absent && seat._original && seat._original.name === name) {
+          _colData[t][s][p] = seat._original;
+          redrawTableCard(t);
+        }
+      }
+    }
+  }
+  renderProxyPanel();
 }
 
 function onMemberChange(val) {
