@@ -39,8 +39,8 @@ body {
   background: linear-gradient(135deg, var(--orange2) 0%, var(--orange) 60%, var(--orange3) 100%);
   border-radius: 16px;
   box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.2);
-  padding: 14px 24px;
-  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 16px;
 }
 .topbar h1 {
@@ -55,19 +55,19 @@ body {
   backdrop-filter: blur(4px);
 }
 
-.ctrl { display: flex; align-items: center; gap: 8px; }
+.ctrl { display: flex; align-items: center; gap: 5px; }
 .ctrl-label { font-size: .75rem; color: rgba(255,255,255,.85); white-space: nowrap; font-weight: 600; }
 
 /* 來賓滑桿區 */
 .slider-wrap { display: flex; flex-direction: column; gap: 0; }
 .slider-row  { display: flex; align-items: center; gap: 8px; }
 .ctrl input[type=range] {
-  width: 220px; accent-color: white; cursor: pointer;
+  width: 160px; accent-color: white; cursor: pointer;
   height: 4px;
 }
 .slider-ticks {
   display: flex; justify-content: space-between;
-  width: 220px; padding: 0 1px;
+  width: 160px; padding: 0 1px;
   font-size: .58rem; color: rgba(255,255,255,.75); font-weight: 700;
   margin-top: 2px; letter-spacing: 0;
 }
@@ -85,8 +85,8 @@ body {
   box-shadow: 0 2px 6px rgba(0,0,0,.15);
 }
 .btn {
-  padding: 8px 20px; border: none; border-radius: 10px;
-  font-size: .85rem; font-weight: 700; cursor: pointer; transition: all .15s;
+  padding: 7px 14px; border: none; border-radius: 10px;
+  font-size: .82rem; font-weight: 700; cursor: pointer; transition: all .15s;
   white-space: nowrap;
 }
 .btn-shuffle {
@@ -99,9 +99,9 @@ body {
   border: 1.5px solid rgba(255,255,255,.45);
 }
 .btn-print:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
-.ml-auto { margin-left: auto; display: flex; gap: 10px; }
+.ml-auto { margin-left: auto; display: flex; gap: 6px; }
 .size-btn {
-  padding: 6px 14px; border-radius: 8px; font-size: .82rem; font-weight: 700;
+  padding: 5px 11px; border-radius: 8px; font-size: .78rem; font-weight: 700;
   cursor: pointer; background: rgba(255,255,255,.18); color: rgba(255,255,255,.85);
   border: 1.5px solid rgba(255,255,255,.35); transition: all .15s; user-select: none;
 }
