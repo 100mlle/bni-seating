@@ -452,9 +452,12 @@ body {
 
 <div class="floor" id="floorWrap">
   <div class="info-col">
-    <div id="infoOval0" class="info-oval editable-oval" data-t="-1" data-s="I" data-p="0" onclick="seatClick(this)" ondblclick="editInfoOval(this);event.stopPropagation()" title="單擊互換；雙擊編輯名字">
-      <span class="oval-name" style="font-weight:900;font-size:1rem;line-height:1.1">陳裔潔</span>
-      <span class="oval-sub" style="font-size:.52rem;opacity:.85;margin-top:1px">電音控制</span>
+    <div style="position:relative;display:inline-flex">
+      <button class="oval-action-btn proxy-btn" onclick="clearInfoOval(0)" title="✋ 清空電音席" style="display:flex">✋</button>
+      <div id="infoOval0" class="info-oval editable-oval" data-t="-1" data-s="I" data-p="0" onclick="seatClick(this)" ondblclick="editInfoOval(this);event.stopPropagation()" title="單擊互換；雙擊編輯名字">
+        <span class="oval-name" style="font-weight:900;font-size:1rem;line-height:1.1">陳裔潔</span>
+        <span class="oval-sub" style="font-size:.52rem;opacity:.85;margin-top:1px">電音控制</span>
+      </div>
     </div>
     <div class="info-desk"><span>資訊</span></div>
     <div id="infoOval1" class="info-oval editable-oval" data-t="-1" data-s="I" data-p="1" onclick="seatClick(this)" ondblclick="editInfoOval(this);event.stopPropagation()" title="單擊互換；雙擊編輯名字">
@@ -626,10 +629,12 @@ let _infoSeats  = [
 ];
 // 確定代理人名單（name → seat object），排位時排除
 let _proxySet = {};
-// 榮譽桌：董顧 / 大使（可互換）
-let _honorData = [
-  { name:'董顧', role:'' },
-  { name:'大使', role:'' },
+
+// 幹部固定席（主席/副主席/秘財）＋電音控制 — 可標為代理空位
+let _specialData = [
+  { colId:'pres-L', name:'黃芯慧', role:'主席',        proxyRole:'代理主席',   empty:false },
+  { colId:'off-L',  name:'劉家豪', role:'副主席',      proxyRole:'代理副主席', empty:false },
+  { colId:'off-R',  name:'陳宜寧', role:'秘書/財務',   proxyRole:'代理秘財',   empty:false },
 ];
 
 // ══════════════════════════════════════════════
@@ -685,12 +690,73 @@ function pullUpSeats() {
   for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
 }
 
-// 特殊桌 oval（主席/副主席/秘書財務）— 可點擊編輯
-function mkSpecialOval(name, role) {
-  return `<div class="oval c-special editable-oval" onclick="editInfoOval(this)" title="點擊編輯名字">
-    <span class="oval-name n" style="font-size:1.08rem">${name}</span>
-    <span class="oval-sub r">${role}</span>
+// 幹部席渲染（含 ✋ 代理 / ✕ 清空 / 雙擊編輯）
+function renderSpecialSeats() {
+  _specialData.forEach((d, p) => {
+    const col = document.getElementById(d.colId);
+    if (!col) return;
+    if (d.empty) {
+      // 空位：顯示 proxyRole 提示，可點擊接受互換
+      col.innerHTML = `<div class="oval c-slot-empty special-empty"
+        data-t="-3" data-s="S" data-p="${p}" onclick="seatClick(this)"
+        title="點擊選取後可放入人名">
+        <span class="n" style="font-size:.72rem;color:#f97316;opacity:.8">${d.proxyRole}</span>
+        <span class="r" style="font-size:.48rem;color:#94a3b8">空缺</span>
+      </div>`;
+    } else {
+      const proxyBtn  = `<button class="oval-action-btn proxy-btn" onclick="event.stopPropagation();markSpecialProxy(${p})" title="✋ 標為代理（清空此席）">✋</button>`;
+      const editTitle = `雙擊編輯名字`;
+      col.innerHTML = `<div class="oval-wrap">${proxyBtn}
+        <div class="oval c-special" data-t="-3" data-s="S" data-p="${p}"
+          onclick="seatClick(this)" ondblclick="editSpecialOval(${p});event.stopPropagation()"
+          title="${editTitle}">
+          <span class="n">${d.name}</span>
+          <span class="r">${d.role}</span>
+        </div>
+      </div>`;
+    }
+  });
+}
+function markSpecialProxy(p) {
+  _specialData[p].empty = true;
+  renderSpecialSeats();
+}
+function clearInfoOval(p) {
+  _infoSeats[p] = { name:'', role: p===0 ? '電音控制（空）' : '' };
+  redrawInfoOval(p);
+}
+function editSpecialOval(p) {
+  const d = _specialData[p];
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:white;border-radius:16px;padding:24px 28px;min-width:260px;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:'Noto Sans TC',sans-serif;">
+    <div style="font-size:1rem;font-weight:800;color:#ea580c;margin-bottom:16px">✏️ 編輯幹部席</div>
+    <label style="font-size:.78rem;color:#64748b;font-weight:600">姓名</label>
+    <input id="_sn" type="text" value="${d.name}" style="display:block;width:100%;margin:4px 0 12px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:1rem;font-family:inherit;font-weight:700;outline:none;">
+    <label style="font-size:.78rem;color:#64748b;font-weight:600">職稱</label>
+    <input id="_sr" type="text" value="${d.role}" style="display:block;width:100%;margin:4px 0 20px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.85rem;font-family:inherit;outline:none;">
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="_sc" style="padding:8px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:white;cursor:pointer;font-size:.85rem;font-weight:700;color:#64748b">取消</button>
+      <button id="_so" style="padding:8px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#f97316,#ea580c);color:white;cursor:pointer;font-size:.85rem;font-weight:700">確認</button>
+    </div>
   </div>`;
+  document.body.appendChild(overlay);
+  const ni = overlay.querySelector('#_sn'); ni.focus(); ni.select();
+  const commit = () => {
+    _specialData[p].name = ni.value.trim() || d.name;
+    _specialData[p].role = overlay.querySelector('#_sr').value.trim() || d.role;
+    renderSpecialSeats();
+    document.body.removeChild(overlay);
+  };
+  overlay.querySelector('#_so').addEventListener('click', commit);
+  overlay.querySelector('#_sc').addEventListener('click', () => document.body.removeChild(overlay));
+  overlay.addEventListener('click', e => { if (e.target===overlay) document.body.removeChild(overlay); });
+  overlay.addEventListener('keydown', e => { if(e.key==='Enter') commit(); if(e.key==='Escape') document.body.removeChild(overlay); });
+}
+
+// 特殊桌 oval（舊版備用）
+function mkSpecialOval(name, role) {
+  return `<div class="oval c-special"><span class="n">${name}</span><span class="r">${role}</span></div>`;
 }
 
 // t=桌index, s=欄('L'|'R'), p=位置index
@@ -858,11 +924,9 @@ function shuffle() {
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
   _selectedEl = null;
 
-  // Special seats（可點擊編輯名字）
-  document.getElementById('pres-L').innerHTML = mkSpecialOval('黃芯慧', '主席');
+  // 幹部席（含代理功能）
   document.getElementById('pres-R').innerHTML = '';
-  document.getElementById('off-L').innerHTML  = mkSpecialOval('劉家豪', '副主席');
-  document.getElementById('off-R').innerHTML  = mkSpecialOval('陳宜寧', '秘書/財務');
+  renderSpecialSeats();
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
@@ -939,8 +1003,11 @@ function seatClick(el) {
 
   // 取得兩邊座位資料（null = 空格）
   const getSeatData = (t, s, p) => {
-    if (t === -1) return {..._infoSeats[p]};
-    if (t === -2) return {..._honorData[p]};
+    if (t === -1) return _infoSeats[p] ? {..._infoSeats[p]} : null;
+    if (t === -3) {
+      const d = _specialData[p];
+      return d.empty ? null : { name: d.name, role: d.role };
+    }
     return _colData[t][s][p] ?? null;
   };
   const seat1 = getSeatData(t1, s1, p1);
@@ -948,8 +1015,18 @@ function seatClick(el) {
 
   // 寫回
   const writeSeat = (t, s, p, val) => {
-    if (t === -1) { _infoSeats[p] = val; redrawInfoOval(p); }
-    else if (t === -2) { _honorData[p] = val; renderHonorTable(); }
+    if (t === -1) { _infoSeats[p] = val || { name:'', role:'' }; redrawInfoOval(p); }
+    else if (t === -3) {
+      const d = _specialData[p];
+      if (val) {
+        d.name  = val.name;
+        d.role  = d.proxyRole; // 放入的人一律顯示代理職稱（雙擊可改）
+        d.empty = false;
+      } else {
+        d.empty = true;
+      }
+      renderSpecialSeats();
+    }
     else { _colData[t][s][p] = val; redrawTableCard(t); }
   };
   writeSeat(t1, s1, p1, seat2);
