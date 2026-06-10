@@ -675,12 +675,37 @@ function compactColumn(tIdx, side) {
 function renderProxyTable() {
   const proxies = Object.values(_proxySet);
   const slot = (p) => proxies[p]
-    ? `<div class="oval c-proxy"><span class="n">${proxies[p].name}</span>${proxies[p].role && proxies[p].role!=='夥伴會員'?`<span class="r">${proxies[p].role}</span>`:''}</div>`
+    ? `<div class="oval c-proxy"><span class="n">${proxies[p].name}</span><span class="r">代理人</span></div>`
     : `<div class="oval c-empty"></div>`;
   const lCol = document.getElementById('proxy-col-L');
   const rCol = document.getElementById('proxy-col-R');
   if (lCol) lCol.innerHTML = [0,1,2].map(slot).join('');
   if (rCol) rCol.innerHTML = [3,4,5].map(slot).join('');
+}
+
+// 移除後往上遞補：各欄位收集所有成員，從上到下重新填滿
+function pullUpSeats() {
+  for (const side of ['L', 'R']) {
+    // 收集此欄所有非空非來賓成員
+    const members = [];
+    for (let t = 0; t < _colData.length; t++) {
+      for (let p = 0; p < _colData[t][side].length; p++) {
+        const s = _colData[t][side][p];
+        if (s && !s._absent && !s._guest) members.push(s);
+      }
+    }
+    // 從頭填回，多餘位置為 null
+    let idx = 0;
+    for (let t = 0; t < _colData.length; t++) {
+      for (let p = 0; p < _colData[t][side].length; p++) {
+        const s = _colData[t][side][p];
+        if (s && s._guest) continue; // 來賓位置不動
+        _colData[t][side][p] = idx < members.length ? members[idx++] : null;
+      }
+    }
+  }
+  // 重繪所有桌
+  for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
 }
 
 // 特殊桌 oval（主席/副主席/秘書財務）— 可點擊編輯
@@ -957,11 +982,10 @@ function seatRemove(el) {
   const seat = _colData[t][s][p];
   if (!seat || seat._absent || seat._guest) return;
 
-  // 加入代理名單，座位標記為 absent，再壓縮欄位往上靠
+  // 加入代理名單，座位標記為 absent，再跨桌往上遞補
   _proxySet[seat.name] = seat;
   _colData[t][s][p] = { _absent: true, _original: seat };
-  compactColumn(t, s);
-  redrawTableCard(t);
+  pullUpSeats();    // 自動補位（會重繪所有桌）
   renderProxyPanel();
 }
 
@@ -982,19 +1006,21 @@ function renderProxyPanel() {
 }
 
 function restoreProxy(name) {
+  const original = _proxySet[name];
   delete _proxySet[name];
-  // 在 _colData 找到對應缺席格還原
-  for (let t = 0; t < _colData.length; t++) {
+  // 找到第一個空位放回去
+  let placed = false;
+  outer: for (let t = 0; t < _colData.length; t++) {
     for (const s of ['L','R']) {
       for (let p = 0; p < _colData[t][s].length; p++) {
-        const seat = _colData[t][s][p];
-        if (seat && seat._absent && seat._original && seat._original.name === name) {
-          _colData[t][s][p] = seat._original;
-          redrawTableCard(t);
+        if (!_colData[t][s][p]) {
+          _colData[t][s][p] = original;
+          placed = true; break outer;
         }
       }
     }
   }
+  pullUpSeats();
   renderProxyPanel();
 }
 
