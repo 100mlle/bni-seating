@@ -295,6 +295,27 @@ body {
   border-color: #cbd5e1; color: #94a3b8;
 }
 .c-empty { background: transparent; border: 2px dashed #e2e8f0; }
+/* oval 外層包裹（✕ 按鈕用） */
+.oval-wrap { position: relative; display: inline-flex; }
+.del-btn {
+  position: absolute; top: -5px; right: -5px;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: #ef4444; color: white;
+  border: 1.5px solid white; font-size: .62rem; font-weight: 900;
+  cursor: pointer; display: none;
+  align-items: center; justify-content: center;
+  z-index: 20; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  line-height: 1; padding: 0;
+}
+.oval-wrap:hover .del-btn { display: flex; }
+
+/* 代理人面板 tag 選取狀態 */
+.proxy-tag.selected {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-color: #fde68a; color: #451a03;
+  box-shadow: 0 0 0 2px rgba(249,115,22,.6);
+}
+
 /* 可互換空格 */
 .c-slot-empty {
   background: transparent;
@@ -601,8 +622,9 @@ let guestCount  = 0;
 let memberCount = 25;
 let _guestMap   = [];
 let _memberPool = [];
-let _colData    = [];   // 目前所有桌子的座位資料（可互換）
-let _selectedEl = null; // 目前選取的 oval 元素
+let _colData        = [];   // 目前所有桌子的座位資料（可互換）
+let _selectedEl     = null; // 目前選取的 oval 元素
+let _selectedProxy  = null; // 目前選取的代理人 { name, el }
 // info-col 兩格資料（可與一般座位互換）
 let _infoSeats  = [
   { name:'陳裔潔', role:'電音控制' },
@@ -630,7 +652,8 @@ function rand(arr) {
 
 // 榮譽桌 oval（董顧/大使）— 可互換，雙擊編輯
 function mkHonorOval(p) {
-  const d = _honorData[p];
+  const d = _honorData[p] || { name: p===0?'董顧':'大使', role:'' };
+  if (!_honorData[p]) _honorData[p] = d; // 修復 null
   return `<div class="oval c-orange" data-t="-2" data-s="H" data-p="${p}"
     onclick="seatClick(this)" ondblclick="editHonorOval(${p});event.stopPropagation()"
     title="單擊互換；雙擊編輯名字">
@@ -729,19 +752,16 @@ function mkSpecialOval(name, role) {
   </div>`;
 }
 
-// t=桌index, s=欄('L'|'R'), p=位置index（可用於指定位置互換）
+// t=桌index, s=欄('L'|'R'), p=位置index
 function mkOval(cls, name, role, t, s, p) {
   const sub = (role && role !== '夥伴會員') ? `<span class="r">${role}</span>` : '';
-  const coord = (t !== undefined)
-    ? ` data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" oncontextmenu="seatRemove(this);return false;"`
-    : '';
-  return `<div class="oval ${cls}"${coord}><span class="n">${name}</span>${sub}</div>`;
+  if (t === undefined) return `<div class="oval ${cls}"><span class="n">${name}</span>${sub}</div>`;
+  const delBtn = `<button class="del-btn" onclick="event.stopPropagation();seatRemoveByCoord(${t},'${s}',${p})" title="移至代理">✕</button>`;
+  return `<div class="oval-wrap">${delBtn}<div class="oval ${cls}" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"><span class="n">${name}</span>${sub}</div></div>`;
 }
 function guestOval(n, t, s, p) {
-  const coord = (t !== undefined)
-    ? ` data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" oncontextmenu="seatRemove(this);return false;"`
-    : '';
-  return `<div class="oval c-guest"${coord}><span class="n">來賓${n}</span><span class="r">來賓</span></div>`;
+  if (t === undefined) return `<div class="oval c-guest"><span class="n">來賓${n}</span><span class="r">來賓</span></div>`;
+  return `<div class="oval-wrap"><div class="oval c-guest" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"><span class="n">來賓${n}</span><span class="r">來賓</span></div></div>`;
 }
 function absentOval(t, s, p) {
   return `<div class="oval" data-t="${t}" data-s="${s}" data-p="${p}" oncontextmenu="seatRemove(this);return false;" title="右鍵還原" style="background:transparent;border:none;box-shadow:none;cursor:default;pointer-events:all;"></div>`;
@@ -951,6 +971,27 @@ function redrawInfoOval(p) {
 }
 
 function seatClick(el) {
+  // 如果有代理人待放置 → 點座位就放入
+  if (_selectedProxy) {
+    const t = +el.dataset.t, s = el.dataset.s, p = +el.dataset.p;
+    if (t >= 0) {
+      const proxyPerson = _proxySet[_selectedProxy.name];
+      const currentSeat = _colData[t][s][p];
+      // 代理人放入此格
+      _colData[t][s][p] = proxyPerson;
+      delete _proxySet[_selectedProxy.name];
+      // 若此格原本有人 → 他移入代理名單
+      if (currentSeat && !currentSeat._absent && !currentSeat._guest) {
+        _proxySet[currentSeat.name] = currentSeat;
+      }
+      _selectedProxy.el.classList.remove('selected');
+      _selectedProxy = null;
+      redrawTableCard(t);
+      renderProxyPanel();
+    }
+    return;
+  }
+
   if (!_selectedEl) {
     _selectedEl = el;
     el.classList.add('selected');
@@ -987,23 +1028,33 @@ function seatClick(el) {
 }
 
 // ══════════════════════════════════════════════
-// 右鍵：加入/移出代理名單
+// 移至代理（✕ 按鈕呼叫）
 // ══════════════════════════════════════════════
-function seatRemove(el) {
-  if (_selectedEl) { _selectedEl.classList.remove('selected'); _selectedEl = null; }
-
-  const t = +el.dataset.t, s = el.dataset.s, p = +el.dataset.p;
-  if (t === -1) return; // info oval 不處理
-  if (t === -2) return; // honor oval 不處理
-
+function seatRemoveByCoord(t, s, p) {
+  if (_selectedEl)    { _selectedEl.classList.remove('selected'); _selectedEl = null; }
+  if (_selectedProxy) { _selectedProxy.el.classList.remove('selected'); _selectedProxy = null; }
+  if (t < 0) return;
   const seat = _colData[t][s][p];
   if (!seat || seat._absent || seat._guest) return;
-
-  // 加入代理名單，座位標記為 absent，再跨桌往上遞補
   _proxySet[seat.name] = seat;
-  _colData[t][s][p] = { _absent: true, _original: seat };
-  pullUpSeats();    // 自動補位（會重繪所有桌）
+  _colData[t][s][p] = null;
+  pullUpSeats();
   renderProxyPanel();
+}
+// 舊版 seatRemove（右鍵備用）
+function seatRemove(el) { seatRemoveByCoord(+el.dataset.t, el.dataset.s, +el.dataset.p); }
+
+// ══════════════════════════════════════════════
+// 選取代理人面板的人，準備移入座位
+// ══════════════════════════════════════════════
+function selectProxy(name, el) {
+  if (_selectedEl) { _selectedEl.classList.remove('selected'); _selectedEl = null; }
+  if (_selectedProxy && _selectedProxy.name === name) {
+    el.classList.remove('selected'); _selectedProxy = null; return;
+  }
+  if (_selectedProxy) _selectedProxy.el.classList.remove('selected');
+  _selectedProxy = { name, el };
+  el.classList.add('selected');
 }
 
 function renderProxyPanel() {
@@ -1011,13 +1062,22 @@ function renderProxyPanel() {
   const names = Object.keys(_proxySet);
   if (!names.length) {
     list.innerHTML = '<div class="proxy-panel-empty">尚無代理</div>';
+    document.querySelector('.proxy-panel-hint').style.display = '';
   } else {
+    document.querySelector('.proxy-panel-hint').style.display = 'none';
     list.innerHTML = names.map(name => `
-      <div class="proxy-tag">
+      <div class="proxy-tag" id="ptag_${name.replace(/\s/g,'_')}"
+           onclick="selectProxy('${name}', this)" title="點擊選取→再點座位放入">
         <span class="proxy-tag-name">${name}</span>
-        <span class="proxy-tag-remove" onclick="restoreProxy('${name}')" title="還原到座位">↩</span>
+        <span class="proxy-tag-remove" onclick="event.stopPropagation();restoreProxy('${name}')" title="放回最後空位">↩</span>
       </div>
     `).join('');
+  }
+  // 若有選取的代理人，重新標記
+  if (_selectedProxy) {
+    const tag = document.getElementById(`ptag_${_selectedProxy.name.replace(/\s/g,'_')}`);
+    if (tag) { tag.classList.add('selected'); _selectedProxy.el = tag; }
+    else _selectedProxy = null;
   }
   renderProxyTable();
 }
