@@ -472,21 +472,13 @@ body {
       </div>
     </div>
     <div class="tables-grid" id="tablesGrid"></div>
-    <div class="bottom-row">
-      <div class="table-card t-honor">
+    <div class="bottom-row" style="grid-template-columns:1fr">
+      <div class="table-card t-honor" style="max-width:320px;margin:0 auto">
         <div class="table-card-label">🏅 榮譽桌</div>
         <div class="table-inner">
           <div class="t-col" id="honor-L"></div>
           <div class="table-rect sz-md"></div>
           <div class="t-col" id="honor-R"></div>
-        </div>
-      </div>
-      <div class="table-card t-proxy">
-        <div class="table-card-label">代理人桌</div>
-        <div class="table-inner">
-          <div class="t-col" id="proxy-col-L"></div>
-          <div class="table-rect sz-md proxy"></div>
-          <div class="t-col" id="proxy-col-R"></div>
         </div>
       </div>
     </div>
@@ -704,26 +696,6 @@ function compactColumn(tIdx, side) {
   _colData[tIdx][side] = [...filled, ...empties];
 }
 
-// 動態代理人桌（灰色格子可點選移動）
-function renderProxyTable() {
-  const proxies = Object.values(_proxySet);
-  const names   = Object.keys(_proxySet);
-  const slot = (p) => {
-    if (!proxies[p]) return `<div class="oval c-empty"></div>`;
-    const name = names[p];
-    const isSelected = _selectedProxy && _selectedProxy.name === name;
-    return `<div class="oval c-proxy${isSelected?' selected':''}"
-      style="cursor:pointer"
-      onclick="selectProxy('${name}', this)"
-      title="點擊選取→再點任意座位放入">
-      <span class="n">${proxies[p].name}</span><span class="r">代理人</span>
-    </div>`;
-  };
-  const lCol = document.getElementById('proxy-col-L');
-  const rCol = document.getElementById('proxy-col-R');
-  if (lCol) lCol.innerHTML = [0,1,2].map(slot).join('');
-  if (rCol) rCol.innerHTML = [3,4,5].map(slot).join('');
-}
 
 // 移除後往上遞補：左右欄同步平均填（每行 L、R 同時），空格往後堆
 function pullUpSeats() {
@@ -1100,7 +1072,6 @@ function renderProxyPanel() {
     if (tag) { tag.classList.add('selected'); _selectedProxy.el = tag; }
     else _selectedProxy = null;
   }
-  renderProxyTable();
 }
 
 function restoreProxy(name) {
