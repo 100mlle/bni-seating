@@ -295,19 +295,20 @@ body {
   border-color: #cbd5e1; color: #94a3b8;
 }
 .c-empty { background: transparent; border: 2px dashed #e2e8f0; }
-/* oval 外層包裹（✕ 按鈕用） */
+/* oval 外層包裹（雙按鈕用） */
 .oval-wrap { position: relative; display: inline-flex; }
-.del-btn {
-  position: absolute; top: -5px; right: -5px;
+.oval-action-btn {
+  position: absolute; top: -5px;
   width: 17px; height: 17px; border-radius: 50%;
-  background: #ef4444; color: white;
   border: 1.5px solid white; font-size: .62rem; font-weight: 900;
   cursor: pointer; display: none;
   align-items: center; justify-content: center;
   z-index: 20; box-shadow: 0 1px 4px rgba(0,0,0,.3);
-  line-height: 1; padding: 0;
+  line-height: 1; padding: 0; color: white;
 }
-.oval-wrap:hover .del-btn { display: flex; }
+.oval-wrap:hover .oval-action-btn { display: flex; }
+.del-btn   { right: -5px; background: #ef4444; } /* ✕ 純刪除（空格） */
+.proxy-btn { left:  -5px; background: #f97316; } /* ✋ 移至代理名單 */
 
 /* 代理人面板 tag 選取狀態 */
 .proxy-tag.selected {
@@ -703,12 +704,21 @@ function compactColumn(tIdx, side) {
   _colData[tIdx][side] = [...filled, ...empties];
 }
 
-// 動態代理人桌
+// 動態代理人桌（灰色格子可點選移動）
 function renderProxyTable() {
   const proxies = Object.values(_proxySet);
-  const slot = (p) => proxies[p]
-    ? `<div class="oval c-proxy"><span class="n">${proxies[p].name}</span><span class="r">代理人</span></div>`
-    : `<div class="oval c-empty"></div>`;
+  const names   = Object.keys(_proxySet);
+  const slot = (p) => {
+    if (!proxies[p]) return `<div class="oval c-empty"></div>`;
+    const name = names[p];
+    const isSelected = _selectedProxy && _selectedProxy.name === name;
+    return `<div class="oval c-proxy${isSelected?' selected':''}"
+      style="cursor:pointer"
+      onclick="selectProxy('${name}', this)"
+      title="點擊選取→再點任意座位放入">
+      <span class="n">${proxies[p].name}</span><span class="r">代理人</span>
+    </div>`;
+  };
   const lCol = document.getElementById('proxy-col-L');
   const rCol = document.getElementById('proxy-col-R');
   if (lCol) lCol.innerHTML = [0,1,2].map(slot).join('');
@@ -756,8 +766,9 @@ function mkSpecialOval(name, role) {
 function mkOval(cls, name, role, t, s, p) {
   const sub = (role && role !== '夥伴會員') ? `<span class="r">${role}</span>` : '';
   if (t === undefined) return `<div class="oval ${cls}"><span class="n">${name}</span>${sub}</div>`;
-  const delBtn = `<button class="del-btn" onclick="event.stopPropagation();seatRemoveByCoord(${t},'${s}',${p})" title="移至代理">✕</button>`;
-  return `<div class="oval-wrap">${delBtn}<div class="oval ${cls}" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"><span class="n">${name}</span>${sub}</div></div>`;
+  const proxyBtn = `<button class="oval-action-btn proxy-btn" onclick="event.stopPropagation();seatRemoveByCoord(${t},'${s}',${p})" title="✋ 移至代理名單">✋</button>`;
+  const delBtn   = `<button class="oval-action-btn del-btn"   onclick="event.stopPropagation();seatDeleteByCoord(${t},'${s}',${p})"  title="✕ 刪除（清空格子）">✕</button>`;
+  return `<div class="oval-wrap">${proxyBtn}<div class="oval ${cls}" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"><span class="n">${name}</span>${sub}</div>${delBtn}</div>`;
 }
 function guestOval(n, t, s, p) {
   if (t === undefined) return `<div class="oval c-guest"><span class="n">來賓${n}</span><span class="r">來賓</span></div>`;
@@ -1040,6 +1051,16 @@ function seatRemoveByCoord(t, s, p) {
   _colData[t][s][p] = null;
   pullUpSeats();
   renderProxyPanel();
+}
+// 純刪除：清空格子（不進代理名單）
+function seatDeleteByCoord(t, s, p) {
+  if (_selectedEl)    { _selectedEl.classList.remove('selected'); _selectedEl = null; }
+  if (_selectedProxy) { _selectedProxy.el.classList.remove('selected'); _selectedProxy = null; }
+  if (t < 0) return;
+  const seat = _colData[t][s][p];
+  if (!seat || seat._absent || seat._guest) return;
+  _colData[t][s][p] = null;
+  pullUpSeats();
 }
 // 舊版 seatRemove（右鍵備用）
 function seatRemove(el) { seatRemoveByCoord(+el.dataset.t, el.dataset.s, +el.dataset.p); }
