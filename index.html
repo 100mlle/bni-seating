@@ -425,6 +425,16 @@ body {
     </label>
   </div>
 
+  <div class="ctrl" style="gap:6px">
+    <span class="ctrl-label">列數</span>
+    <label class="size-btn" id="lblCol2" style="background:white;color:var(--orange2)">
+      <input type="radio" name="col" value="2" checked onchange="onColChange(2)" hidden>2列
+    </label>
+    <label class="size-btn" id="lblCol3">
+      <input type="radio" name="col" value="3" onchange="onColChange(3)" hidden>3列
+    </label>
+  </div>
+
   <div class="ml-auto">
     <button class="btn btn-shuffle" onclick="shuffle()">🔀 重新排列</button>
     <button class="btn btn-print"   onclick="window.print()">🖨️ 列印</button>
@@ -509,6 +519,7 @@ const ROSTER = [
 const MAX_GUESTS  = 12;
 const MAX_MEMBERS = 40;
 let   seatsPerSide = 3;   // 3 = 6人桌；2 = 4人桌
+let   gridCols    = 2;   // 2 或 3 列桌子
 
 // ══════════════════════════════════════════════
 // GUEST SLOT FORMULA（依 PPTX 圖片）
@@ -855,7 +866,7 @@ function shuffle() {
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
-  grid.style.gridTemplateColumns = '1fr 1fr';
+  grid.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
   if (Object.keys(_proxySet).length) pullUpSeats(); // 代理人推到後面
   renderProxyPanel();
 
@@ -880,7 +891,7 @@ function updateGuestsOnly(val) {
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
-  grid.style.gridTemplateColumns = '1fr 1fr';
+  grid.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
 }
 
 // ══════════════════════════════════════════════
@@ -1004,6 +1015,17 @@ function onMemberChange(val) {
   memberCount = Math.max(3, Math.min(val || 25, MAX_MEMBERS));
   document.getElementById('memberInput').value = memberCount;
   shuffle();
+}
+
+function onColChange(val) {
+  gridCols = val;
+  document.getElementById('lblCol2').style.background = val===2 ? 'white' : 'rgba(255,255,255,.18)';
+  document.getElementById('lblCol2').style.color      = val===2 ? 'var(--orange2)' : 'rgba(255,255,255,.85)';
+  document.getElementById('lblCol3').style.background = val===3 ? 'white' : 'rgba(255,255,255,.18)';
+  document.getElementById('lblCol3').style.color      = val===3 ? 'var(--orange2)' : 'rgba(255,255,255,.85)';
+  // 只更新 grid 欄數，不重新排列
+  const grid = document.getElementById('tablesGrid');
+  if (grid) grid.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
 }
 
 function onSizeChange(val) {
