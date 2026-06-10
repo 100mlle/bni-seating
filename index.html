@@ -683,27 +683,32 @@ function renderProxyTable() {
   if (rCol) rCol.innerHTML = [3,4,5].map(slot).join('');
 }
 
-// 移除後往上遞補：各欄位收集所有成員，從上到下重新填滿
+// 移除後往上遞補：跨桌跨欄交錯收集，統一從頭填滿
+// 順序：桌0 L0, R0, L1, R1 … 桌1 L0, R0 … 確保每桌都盡量坐滿
 function pullUpSeats() {
-  for (const side of ['L', 'R']) {
-    // 收集此欄所有非空非來賓成員
-    const members = [];
-    for (let t = 0; t < _colData.length; t++) {
-      for (let p = 0; p < _colData[t][side].length; p++) {
-        const s = _colData[t][side][p];
-        if (s && !s._absent && !s._guest) members.push(s);
-      }
-    }
-    // 從頭填回，多餘位置為 null
-    let idx = 0;
-    for (let t = 0; t < _colData.length; t++) {
-      for (let p = 0; p < _colData[t][side].length; p++) {
-        const s = _colData[t][side][p];
-        if (s && s._guest) continue; // 來賓位置不動
-        _colData[t][side][p] = idx < members.length ? members[idx++] : null;
+  // Step1: 依「桌→列→欄」順序建立所有 member slot 清單（跳過來賓槽）
+  const slots = [];
+  for (let t = 0; t < _colData.length; t++) {
+    for (let p = 0; p < seatsPerSide; p++) {
+      for (const s of ['L', 'R']) {
+        const seat = _colData[t][s][p];
+        if (seat && seat._guest) continue; // 來賓固定不動
+        slots.push({ t, s, p });
       }
     }
   }
+
+  // Step2: 收集所有仍在座位上的成員（非 absent、非 guest）
+  const members = slots
+    .map(({t,s,p}) => _colData[t][s][p])
+    .filter(seat => seat && !seat._absent && !seat._guest);
+
+  // Step3: 從頭填回，多餘 slot 清空
+  let idx = 0;
+  for (const {t, s, p} of slots) {
+    _colData[t][s][p] = idx < members.length ? members[idx++] : null;
+  }
+
   // 重繪所有桌
   for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
 }
