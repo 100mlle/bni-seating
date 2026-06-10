@@ -295,6 +295,15 @@ body {
   border-color: #cbd5e1; color: #94a3b8;
 }
 .c-empty { background: transparent; border: 2px dashed #e2e8f0; }
+/* 可互換空格 */
+.c-slot-empty {
+  background: transparent;
+  border: 2px dashed #cbd5e1;
+  opacity: .55;
+  transition: opacity .15s, border-color .15s;
+}
+.c-slot-empty:hover { opacity: 1; border-color: #f97316; }
+.c-slot-empty.selected { opacity: 1; }
 
 
 /* ── SPECIAL TABLE ACCENTS ── */
@@ -683,33 +692,32 @@ function renderProxyTable() {
   if (rCol) rCol.innerHTML = [3,4,5].map(slot).join('');
 }
 
-// 移除後往上遞補：跨桌跨欄交錯收集，統一從頭填滿
-// 順序：桌0 L0, R0, L1, R1 … 桌1 L0, R0 … 確保每桌都盡量坐滿
+// 移除後往上遞補：左右欄同步平均填（每行 L、R 同時），空格往後堆
 function pullUpSeats() {
-  // Step1: 依「桌→列→欄」順序建立所有 member slot 清單（跳過來賓槽）
+  // 順序：桌0-行0 L, 桌0-行0 R, 桌0-行1 L, 桌0-行1 R … 桌1-行0 L, 桌1-行0 R …
+  // → 保證每桌 L/R 人數均等，空格只出現在最後幾桌底部
   const slots = [];
   for (let t = 0; t < _colData.length; t++) {
     for (let p = 0; p < seatsPerSide; p++) {
       for (const s of ['L', 'R']) {
         const seat = _colData[t][s][p];
-        if (seat && seat._guest) continue; // 來賓固定不動
+        if (seat && seat._guest) continue; // 來賓不動
         slots.push({ t, s, p });
       }
     }
   }
 
-  // Step2: 收集所有仍在座位上的成員（非 absent、非 guest）
+  // 收集現有成員
   const members = slots
     .map(({t,s,p}) => _colData[t][s][p])
     .filter(seat => seat && !seat._absent && !seat._guest);
 
-  // Step3: 從頭填回，多餘 slot 清空
+  // 填回：前段填人，後段留空（null = 空格框）
   let idx = 0;
-  for (const {t, s, p} of slots) {
+  for (const { t, s, p } of slots) {
     _colData[t][s][p] = idx < members.length ? members[idx++] : null;
   }
 
-  // 重繪所有桌
   for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
 }
 
@@ -737,6 +745,10 @@ function guestOval(n, t, s, p) {
 }
 function absentOval(t, s, p) {
   return `<div class="oval" data-t="${t}" data-s="${s}" data-p="${p}" oncontextmenu="seatRemove(this);return false;" title="右鍵還原" style="background:transparent;border:none;box-shadow:none;cursor:default;pointer-events:all;"></div>`;
+}
+// 空格：可見虛線框，可點擊互換（讓人移入）
+function emptySlotOval(t, s, p) {
+  return `<div class="oval c-slot-empty" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" title="點擊選取空位後可與人名互換"></div>`;
 }
 
 // ══════════════════════════════════════════════
@@ -816,9 +828,9 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
 
 function renderCol(colSeats, tIdx, side) {
   return colSeats.map((seat, p) => {
-    if (!seat) return '';
+    if (!seat)        return emptySlotOval(tIdx, side, p); // 空格→虛線框可互換
     if (seat._absent) return absentOval(tIdx, side, p);
-    if (seat._guest) return guestOval(seat._guest, tIdx, side, p);
+    if (seat._guest)  return guestOval(seat._guest, tIdx, side, p);
     return mkOval('c-member', seat.name, seat.role, tIdx, side, p);
   }).join('');
 }
@@ -952,11 +964,11 @@ function seatClick(el) {
   const t1 = +_selectedEl.dataset.t, s1 = _selectedEl.dataset.s, p1 = +_selectedEl.dataset.p;
   const t2 = +el.dataset.t,          s2 = el.dataset.s,          p2 = +el.dataset.p;
 
-  // 取得兩邊座位資料
+  // 取得兩邊座位資料（null = 空格）
   const getSeatData = (t, s, p) => {
     if (t === -1) return {..._infoSeats[p]};
     if (t === -2) return {..._honorData[p]};
-    return _colData[t][s][p];
+    return _colData[t][s][p] ?? null;
   };
   const seat1 = getSeatData(t1, s1, p1);
   const seat2 = getSeatData(t2, s2, p2);
