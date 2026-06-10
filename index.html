@@ -699,10 +699,9 @@ function absentOval(t, s, p) {
 }
 // 代理人：灰色 oval，留在座位但標示灰色，✓ 可還原
 function mkProxyMemberOval(seat, t, s, p) {
-  const sub = (seat.role && seat.role !== '夥伴會員') ? `<span class="r">${seat.role}</span>` : '';
   const restoreBtn = `<button class="oval-action-btn proxy-btn" onclick="event.stopPropagation();restoreProxy('${seat.name}')" title="✓ 還原為出席（變回綠色）">✓</button>`;
   const delBtn     = `<button class="oval-action-btn del-btn"   onclick="event.stopPropagation();seatDeleteByCoord(${t},'${s}',${p})"  title="✕ 刪除">✕</button>`;
-  return `<div class="oval-wrap">${restoreBtn}<div class="oval c-proxy" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" style="cursor:pointer"><span class="n">${seat.name}</span>${sub}</div>${delBtn}</div>`;
+  return `<div class="oval-wrap">${restoreBtn}<div class="oval c-proxy" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" style="cursor:pointer"><span class="n">${seat.name}</span><span class="r">代理人</span></div>${delBtn}</div>`;
 }
 
 // 空格：可見虛線框，可點擊互換（讓人移入）
@@ -838,8 +837,8 @@ function calcNumTables(poolSize) {
 function shuffle() {
   const cap  = Math.min(memberCount, ROSTER.length);
   const base = ROSTER.filter(m => !m.fix).slice(0, cap - 3);
-  // 加入董顧/大使到人員池（可代理但不打亂）
-  _memberPool = rand([...base, ..._honorMembers].filter(m => !_proxySet[m.name]));
+  // 全員（含代理人）都放入池，shuffle 後再由 pullUpSeats 把代理排到後面
+  _memberPool = rand([...base, ..._honorMembers]);
 
   const numTables = calcNumTables(_memberPool.length);
 
@@ -857,6 +856,7 @@ function shuffle() {
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
   grid.style.gridTemplateColumns = '1fr 1fr';
+  if (Object.keys(_proxySet).length) pullUpSeats(); // 代理人推到後面
   renderProxyPanel();
 
   const now = new Date();
