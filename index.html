@@ -1154,7 +1154,7 @@ async function exportPPT() {
   // 4. 建立 PPT（13.3333 × 7.5 英寸 = 16:9 寬螢幕）
   const now     = new Date();
   const session = document.getElementById('sessionInput')?.value || '13';
-  const dateStr = `${now.getFullYear()}年 第${session}會期 ${now.getMonth()+1}月${now.getDate()}日`;
+  const dateStr = `${now.getFullYear()}年 第${session}會期`;
 
   const pptx  = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
