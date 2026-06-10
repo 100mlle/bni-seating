@@ -951,6 +951,22 @@ function shuffle() {
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
   grid.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
+  // 重新排列後，把代理幹部重新插入 _colData（否則會消失）
+  _specialData.forEach(d => {
+    if (!d.empty) return; // 未代理，略過
+    _proxySet[d.name] = { name: d.name, role: d.role }; // 確保還在代理集
+    let placed = false;
+    for (let t = _colData.length - 1; t >= 0 && !placed; t--) {
+      for (const s of ['L','R']) {
+        for (let pos = _colData[t][s].length - 1; pos >= 0 && !placed; pos--) {
+          if (!_colData[t][s][pos] || _colData[t][s][pos]._absent) {
+            _colData[t][s][pos] = { name: d.name, role: d.role };
+            placed = true;
+          }
+        }
+      }
+    }
+  });
   if (Object.keys(_proxySet).length) pullUpSeats(); // 代理人推到後面
   renderProxyPanel();
 
