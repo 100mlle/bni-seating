@@ -437,7 +437,7 @@ body {
   <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(145deg,#4ade80,#16a34a);border-color:#86efac"></div>夥伴會員</div>
   <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(145deg,#f97316,#ea580c);border-color:#fdba74"></div>幹部（主席/副主席/秘財）</div>
   <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(145deg,#fbbf24,#d97706);border-color:#fde68a"></div>來賓</div>
-  <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(145deg,#ea580c,#9a3412);border-color:#fb923c"></div>榮譽（董顧/大使）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(145deg,#e2e8f0,#cbd5e1);border-color:#94a3b8"></div>代理人（灰色）</div>
 </div>
 
 <div class="floor" id="floorWrap">
@@ -472,21 +472,11 @@ body {
       </div>
     </div>
     <div class="tables-grid" id="tablesGrid"></div>
-    <div class="bottom-row" style="grid-template-columns:1fr">
-      <div class="table-card t-honor" style="max-width:320px;margin:0 auto">
-        <div class="table-card-label">🏅 榮譽桌</div>
-        <div class="table-inner">
-          <div class="t-col" id="honor-L"></div>
-          <div class="table-rect sz-md"></div>
-          <div class="t-col" id="honor-R"></div>
-        </div>
-      </div>
-    </div>
   </div>
   <!-- 確定代理人面板 -->
   <div class="proxy-panel" id="proxyPanel">
     <div class="proxy-panel-title">✋ 確定代理</div>
-    <div class="proxy-panel-hint">右鍵人名<br>加入此處</div>
+    <div class="proxy-panel-hint">按 ✋ 標為代理<br>按 ✓ 還原出席</div>
     <div id="proxyList"></div>
   </div>
 </div>
@@ -643,50 +633,11 @@ function rand(arr) {
   return a;
 }
 
-// 榮譽桌 oval（董顧/大使）— 可互換，雙擊編輯
-function mkHonorOval(p) {
-  const d = _honorData[p] || { name: p===0?'董顧':'大使', role:'' };
-  if (!_honorData[p]) _honorData[p] = d; // 修復 null
-  return `<div class="oval c-orange" data-t="-2" data-s="H" data-p="${p}"
-    onclick="seatClick(this)" ondblclick="editHonorOval(${p});event.stopPropagation()"
-    title="單擊互換；雙擊編輯名字">
-    <span class="n">${d.name}</span>
-    ${d.role ? `<span class="r">${d.role}</span>` : ''}
-  </div>`;
-}
-function renderHonorTable() {
-  const L = document.getElementById('honor-L');
-  const R = document.getElementById('honor-R');
-  if (L) L.innerHTML = mkHonorOval(0);
-  if (R) R.innerHTML = mkHonorOval(1);
-}
-function editHonorOval(p) {
-  const d = _honorData[p];
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = `<div style="background:white;border-radius:16px;padding:24px 28px;min-width:260px;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:'Noto Sans TC',sans-serif;">
-    <div style="font-size:1rem;font-weight:800;color:#ea580c;margin-bottom:16px">✏️ 編輯榮譽席</div>
-    <label style="font-size:.78rem;color:#64748b;font-weight:600">名稱</label>
-    <input id="_hn" type="text" value="${d.name}" style="display:block;width:100%;margin:4px 0 12px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:1rem;font-family:inherit;font-weight:700;outline:none;">
-    <label style="font-size:.78rem;color:#64748b;font-weight:600">備注（可留空）</label>
-    <input id="_hr" type="text" value="${d.role||''}" style="display:block;width:100%;margin:4px 0 20px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.85rem;font-family:inherit;outline:none;">
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button id="_hc" style="padding:8px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:white;cursor:pointer;font-size:.85rem;font-weight:700;color:#64748b">取消</button>
-      <button id="_ho" style="padding:8px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#f97316,#ea580c);color:white;cursor:pointer;font-size:.85rem;font-weight:700">確認</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-  const ni = overlay.querySelector('#_hn'); ni.focus(); ni.select();
-  const commit = () => {
-    _honorData[p] = { name: ni.value.trim() || d.name, role: overlay.querySelector('#_hr').value.trim() };
-    renderHonorTable();
-    document.body.removeChild(overlay);
-  };
-  overlay.querySelector('#_ho').addEventListener('click', commit);
-  overlay.querySelector('#_hc').addEventListener('click', () => document.body.removeChild(overlay));
-  overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
-  overlay.addEventListener('keydown', e => { if (e.key==='Enter') commit(); if (e.key==='Escape') document.body.removeChild(overlay); });
-}
+// 董顧/大使 固定加入座位池（可改名）
+let _honorMembers = [
+  { name:'董顧', role:'榮譽' },
+  { name:'大使', role:'榮譽' },
+];
 
 // 壓縮欄位：把空格往下推（人名往上靠）
 function compactColumn(tIdx, side) {
@@ -697,32 +648,29 @@ function compactColumn(tIdx, side) {
 }
 
 
-// 移除後往上遞補：左右欄同步平均填（每行 L、R 同時），空格往後堆
+// 重排：活躍成員（綠）在前左右均勻，代理（灰）補後面，空格最末
 function pullUpSeats() {
-  // 順序：桌0-行0 L, 桌0-行0 R, 桌0-行1 L, 桌0-行1 R … 桌1-行0 L, 桌1-行0 R …
-  // → 保證每桌 L/R 人數均等，空格只出現在最後幾桌底部
   const slots = [];
   for (let t = 0; t < _colData.length; t++) {
     for (let p = 0; p < seatsPerSide; p++) {
       for (const s of ['L', 'R']) {
-        const seat = _colData[t][s][p];
-        if (seat && seat._guest) continue; // 來賓不動
+        if (_colData[t][s][p] && _colData[t][s][p]._guest) continue; // 來賓不動
         slots.push({ t, s, p });
       }
     }
   }
 
-  // 收集現有成員
-  const members = slots
-    .map(({t,s,p}) => _colData[t][s][p])
-    .filter(seat => seat && !seat._absent && !seat._guest);
+  // 收集所有非來賓成員，分活躍 vs 代理
+  const all     = slots.map(({t,s,p}) => _colData[t][s][p]).filter(s => s && !s._absent && !s._guest);
+  const active  = all.filter(s => !_proxySet[s.name]);
+  const proxies = all.filter(s =>  _proxySet[s.name]);
 
-  // 填回：前段填人，後段留空（null = 空格框）
+  // 順序：活躍優先填滿，代理接著補，空格最後
+  const ordered = [...active, ...proxies];
   let idx = 0;
   for (const { t, s, p } of slots) {
-    _colData[t][s][p] = idx < members.length ? members[idx++] : null;
+    _colData[t][s][p] = idx < ordered.length ? ordered[idx++] : null;
   }
-
   for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
 }
 
@@ -749,6 +697,14 @@ function guestOval(n, t, s, p) {
 function absentOval(t, s, p) {
   return `<div class="oval" data-t="${t}" data-s="${s}" data-p="${p}" oncontextmenu="seatRemove(this);return false;" title="右鍵還原" style="background:transparent;border:none;box-shadow:none;cursor:default;pointer-events:all;"></div>`;
 }
+// 代理人：灰色 oval，留在座位但標示灰色，✓ 可還原
+function mkProxyMemberOval(seat, t, s, p) {
+  const sub = (seat.role && seat.role !== '夥伴會員') ? `<span class="r">${seat.role}</span>` : '';
+  const restoreBtn = `<button class="oval-action-btn proxy-btn" onclick="event.stopPropagation();restoreProxy('${seat.name}')" title="✓ 還原為出席（變回綠色）">✓</button>`;
+  const delBtn     = `<button class="oval-action-btn del-btn"   onclick="event.stopPropagation();seatDeleteByCoord(${t},'${s}',${p})"  title="✕ 刪除">✕</button>`;
+  return `<div class="oval-wrap">${restoreBtn}<div class="oval c-proxy" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" style="cursor:pointer"><span class="n">${seat.name}</span>${sub}</div>${delBtn}</div>`;
+}
+
 // 空格：可見虛線框，可點擊互換（讓人移入）
 function emptySlotOval(t, s, p) {
   return `<div class="oval c-slot-empty" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" title="點擊選取空位後可與人名互換"></div>`;
@@ -831,10 +787,12 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
 
 function renderCol(colSeats, tIdx, side) {
   return colSeats.map((seat, p) => {
-    if (!seat)        return emptySlotOval(tIdx, side, p); // 空格→虛線框可互換
-    if (seat._absent) return absentOval(tIdx, side, p);
-    if (seat._guest)  return guestOval(seat._guest, tIdx, side, p);
-    return mkOval('c-member', seat.name, seat.role, tIdx, side, p);
+    if (!seat)           return emptySlotOval(tIdx, side, p);
+    if (seat._absent)    return absentOval(tIdx, side, p);
+    if (seat._guest)     return guestOval(seat._guest, tIdx, side, p);
+    if (_proxySet[seat.name]) return mkProxyMemberOval(seat, tIdx, side, p); // 灰色代理
+    const cls = seat.role === '榮譽' ? 'c-orange' : 'c-member';
+    return mkOval(cls, seat.name, seat.role, tIdx, side, p);
   }).join('');
 }
 
@@ -879,7 +837,9 @@ function calcNumTables(poolSize) {
 // ══════════════════════════════════════════════
 function shuffle() {
   const cap  = Math.min(memberCount, ROSTER.length);
-  _memberPool = rand(ROSTER.filter(m => !m.fix && !_proxySet[m.name]).slice(0, cap - 3));
+  const base = ROSTER.filter(m => !m.fix).slice(0, cap - 3);
+  // 加入董顧/大使到人員池（可代理但不打亂）
+  _memberPool = rand([...base, ..._honorMembers].filter(m => !_proxySet[m.name]));
 
   const numTables = calcNumTables(_memberPool.length);
 
@@ -893,7 +853,6 @@ function shuffle() {
   document.getElementById('pres-R').innerHTML = '';
   document.getElementById('off-L').innerHTML  = mkSpecialOval('劉家豪', '副主席');
   document.getElementById('off-R').innerHTML  = mkSpecialOval('陳宜寧', '秘書/財務');
-  renderHonorTable();
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
@@ -954,27 +913,6 @@ function redrawInfoOval(p) {
 }
 
 function seatClick(el) {
-  // 如果有代理人待放置 → 點座位就放入
-  if (_selectedProxy) {
-    const t = +el.dataset.t, s = el.dataset.s, p = +el.dataset.p;
-    if (t >= 0) {
-      const proxyPerson = _proxySet[_selectedProxy.name];
-      const currentSeat = _colData[t][s][p];
-      // 代理人放入此格
-      _colData[t][s][p] = proxyPerson;
-      delete _proxySet[_selectedProxy.name];
-      // 若此格原本有人 → 他移入代理名單
-      if (currentSeat && !currentSeat._absent && !currentSeat._guest) {
-        _proxySet[currentSeat.name] = currentSeat;
-      }
-      _selectedProxy.el.classList.remove('selected');
-      _selectedProxy = null;
-      redrawTableCard(t);
-      renderProxyPanel();
-    }
-    return;
-  }
-
   if (!_selectedEl) {
     _selectedEl = el;
     el.classList.add('selected');
@@ -1019,9 +957,8 @@ function seatRemoveByCoord(t, s, p) {
   if (t < 0) return;
   const seat = _colData[t][s][p];
   if (!seat || seat._absent || seat._guest) return;
-  _proxySet[seat.name] = seat;
-  _colData[t][s][p] = null;
-  pullUpSeats();
+  _proxySet[seat.name] = seat; // 標記為代理（灰色），不移除
+  pullUpSeats();               // 重排：活躍在前、代理在後
   renderProxyPanel();
 }
 // 純刪除：清空格子（不進代理名單）
@@ -1037,58 +974,28 @@ function seatDeleteByCoord(t, s, p) {
 // 舊版 seatRemove（右鍵備用）
 function seatRemove(el) { seatRemoveByCoord(+el.dataset.t, el.dataset.s, +el.dataset.p); }
 
-// ══════════════════════════════════════════════
-// 選取代理人面板的人，準備移入座位
-// ══════════════════════════════════════════════
-function selectProxy(name, el) {
-  if (_selectedEl) { _selectedEl.classList.remove('selected'); _selectedEl = null; }
-  if (_selectedProxy && _selectedProxy.name === name) {
-    el.classList.remove('selected'); _selectedProxy = null; return;
-  }
-  if (_selectedProxy) _selectedProxy.el.classList.remove('selected');
-  _selectedProxy = { name, el };
-  el.classList.add('selected');
-}
 
 function renderProxyPanel() {
-  const list = document.getElementById('proxyList');
+  const list  = document.getElementById('proxyList');
+  const hint  = document.querySelector('.proxy-panel-hint');
   const names = Object.keys(_proxySet);
   if (!names.length) {
     list.innerHTML = '<div class="proxy-panel-empty">尚無代理</div>';
-    document.querySelector('.proxy-panel-hint').style.display = '';
+    if (hint) hint.style.display = '';
   } else {
-    document.querySelector('.proxy-panel-hint').style.display = 'none';
+    if (hint) hint.style.display = 'none';
     list.innerHTML = names.map(name => `
-      <div class="proxy-tag" id="ptag_${name.replace(/\s/g,'_')}"
-           onclick="selectProxy('${name}', this)" title="點擊選取→再點座位放入">
+      <div class="proxy-tag">
         <span class="proxy-tag-name">${name}</span>
-        <span class="proxy-tag-remove" onclick="event.stopPropagation();restoreProxy('${name}')" title="放回最後空位">↩</span>
+        <span class="proxy-tag-remove" onclick="restoreProxy('${name}')" title="還原為出席（變回綠色）">✓</span>
       </div>
     `).join('');
-  }
-  // 若有選取的代理人，重新標記
-  if (_selectedProxy) {
-    const tag = document.getElementById(`ptag_${_selectedProxy.name.replace(/\s/g,'_')}`);
-    if (tag) { tag.classList.add('selected'); _selectedProxy.el = tag; }
-    else _selectedProxy = null;
   }
 }
 
 function restoreProxy(name) {
-  const original = _proxySet[name];
-  delete _proxySet[name];
-  // 找到第一個空位放回去
-  let placed = false;
-  outer: for (let t = 0; t < _colData.length; t++) {
-    for (const s of ['L','R']) {
-      for (let p = 0; p < _colData[t][s].length; p++) {
-        if (!_colData[t][s][p]) {
-          _colData[t][s][p] = original;
-          placed = true; break outer;
-        }
-      }
-    }
-  }
+  delete _proxySet[name]; // 取消代理標記 → pullUpSeats 會把他移回綠色前段
+  if (_selectedProxy && _selectedProxy.name === name) _selectedProxy = null;
   pullUpSeats();
   renderProxyPanel();
 }
