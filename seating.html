@@ -956,10 +956,14 @@ function placePinnedOfficers() {
     return r ? { name: r.name, role: r.role, _pinned: true } : { name, role: '', _pinned: true };
   });
 
-  // 目標格子：桌1 L[0,1,2]、桌3 L[0,1]
+  // 第二組桌子的 index：依列數決定
+  // 2列 → 桌3（index 2）；3列 → 桌4（index 3）
+  const t2nd = gridCols === 3 ? 3 : 2;
+
+  // 目標格子：桌1 L[0,1,2]、第二組桌 L[0,1]
   const targets = [
-    { t:0, s:'L', p:0 }, { t:0, s:'L', p:1 }, { t:0, s:'L', p:2 },
-    { t:2, s:'L', p:0 }, { t:2, s:'L', p:1 },
+    { t:0,    s:'L', p:0 }, { t:0,    s:'L', p:1 }, { t:0,    s:'L', p:2 },
+    { t:t2nd, s:'L', p:0 }, { t:t2nd, s:'L', p:1 },
   ];
 
   // 先移除已存在的固定幹部（可能已在其他格）
