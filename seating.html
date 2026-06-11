@@ -39,8 +39,8 @@ body {
   background: linear-gradient(135deg, var(--orange2) 0%, var(--orange) 60%, var(--orange3) 100%);
   border-radius: 16px;
   box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.2);
-  padding: 10px 16px;
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px;
+  display: flex; align-items: center; gap: 7px; flex-wrap: nowrap;
   margin-bottom: 16px;
 }
 .topbar h1 {
@@ -62,7 +62,7 @@ body {
 .slider-wrap { display: flex; flex-direction: column; gap: 0; }
 .slider-row  { display: flex; align-items: center; gap: 8px; }
 .ctrl input[type=range] {
-  width: 160px; accent-color: white; cursor: pointer;
+  width: 110px; accent-color: white; cursor: pointer;
   height: 4px;
 }
 .slider-ticks {
@@ -697,27 +697,45 @@ function compactColumn(tIdx, side) {
 
 // 重排：活躍成員（綠）在前左右均勻，代理（灰）補後面，空格最末
 function pullUpSeats() {
+  // 固定席（幹部固定 + 來賓）不參與重排
   const slots = [];
   for (let t = 0; t < _colData.length; t++) {
     for (let p = 0; p < seatsPerSide; p++) {
       for (const s of ['L', 'R']) {
-        if (_colData[t][s][p] && _colData[t][s][p]._guest) continue; // 來賓不動
+        const seat = _colData[t][s][p];
+        if (seat && seat._guest)  continue; // 來賓不動
+        if (seat && seat._pinned) continue; // 固定幹部不動
         slots.push({ t, s, p });
       }
     }
   }
 
-  // 收集所有非來賓成員，分活躍 vs 代理
-  const all     = slots.map(({t,s,p}) => _colData[t][s][p]).filter(s => s && !s._absent && !s._guest);
+  // 收集所有可移動成員，分活躍 vs 代理
+  const all     = slots.map(({t,s,p}) => _colData[t][s][p]).filter(s => s && !s._absent && !s._guest && !s._pinned);
   const active  = all.filter(s => !_proxySet[s.name]);
   const proxies = all.filter(s =>  _proxySet[s.name]);
 
-  // 順序：活躍優先填滿，代理接著補，空格最後
-  const ordered = [...active, ...proxies];
-  let idx = 0;
+  // 活躍從前面填，代理從最後一桌右欄往前填
+  // slots 正序 → 活躍填前段；代理反向填末段
+  const slotsRev = [...slots].reverse();
+
+  // 先全部清空
+  for (const { t, s, p } of slots) _colData[t][s][p] = null;
+
+  // 活躍從前填
+  let ai = 0;
   for (const { t, s, p } of slots) {
-    _colData[t][s][p] = idx < ordered.length ? ordered[idx++] : null;
+    if (ai >= active.length) break;
+    _colData[t][s][p] = active[ai++];
   }
+
+  // 代理從後填（右下角開始）
+  let pi = 0;
+  for (const { t, s, p } of slotsRev) {
+    if (pi >= proxies.length) break;
+    if (!_colData[t][s][p]) { _colData[t][s][p] = proxies[pi++]; }
+  }
+
   for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
 }
 
