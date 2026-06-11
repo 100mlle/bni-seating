@@ -881,6 +881,29 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
   });
 }
 
+// 董顧/大使固定放在最後一桌右欄最後兩個位置
+function placeHonorMembers() {
+  const lastT = _colData.length - 1;
+  if (lastT < 0) return;
+  const rLen = _colData[lastT].R.length;
+  // 先從所有桌移除已存在的董顧/大使（避免重複）
+  const honorNames = new Set(_honorMembers.map(h => h.name));
+  for (let t = 0; t < _colData.length; t++) {
+    for (const s of ['L','R']) {
+      for (let p = 0; p < _colData[t][s].length; p++) {
+        if (_colData[t][s][p] && honorNames.has(_colData[t][s][p].name)) {
+          _colData[t][s][p] = null;
+        }
+      }
+    }
+  }
+  // 放到最後一桌右欄末尾
+  _honorMembers.forEach((h, i) => {
+    const pos = rLen - 1 - i;
+    if (pos >= 0) _colData[lastT].R[pos] = { name: h.name, role: h.role };
+  });
+}
+
 function renderCol(colSeats, tIdx, side) {
   return colSeats.map((seat, p) => {
     if (!seat)           return emptySlotOval(tIdx, side, p);
@@ -935,13 +958,15 @@ function shuffle() {
   const cap  = Math.min(memberCount, ROSTER.length);
   const base = ROSTER.filter(m => !m.fix).slice(0, cap - 3);
   // 全員（含代理人）都放入池，shuffle 後再由 pullUpSeats 把代理排到後面
-  _memberPool = rand([...base, ..._honorMembers]);
+  // 董顧/大使不進隨機池，固定放到最後一桌右下角
+  _memberPool = rand([...base]);
 
   const numTables = calcNumTables(_memberPool.length);
 
   _guestMap = buildGuestMap(numTables);
 
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
+  placeHonorMembers(); // 董顧/大使固定右下角
   _selectedEl = null;
 
   // 幹部席（含代理功能）
@@ -988,6 +1013,8 @@ function updateGuestsOnly(val) {
   _guestMap = buildGuestMap(numTables);
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
   _selectedEl = null;
+
+  placeHonorMembers(); // 董顧/大使固定右下角
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
