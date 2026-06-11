@@ -699,53 +699,57 @@ function compactColumn(tIdx, side) {
 function pullUpSeats() {
   const lastT = _colData.length - 1;
   const honorNames = new Set(_honorMembers.map(h => h.name));
+  // 固定格：有人且屬於來賓/固定幹部/董顧大使 → 不動
+  // 注意：null 不是固定格，空格也可以被使用
+  const isFixed = seat => seat && (seat._guest || seat._pinned || honorNames.has(seat.name));
 
-  // 可移動格：排除來賓、固定幹部、董顧/大使
-  const isLocked = seat => !seat || seat._guest || seat._pinned || honorNames.has(seat.name);
-
-  // 一般桌（非最後一桌）的可動格
+  // 一般桌（非最後一桌）的所有非固定格
   const normalSlots = [];
   for (let t = 0; t < lastT; t++) {
     for (let p = 0; p < seatsPerSide; p++) {
       for (const s of ['L','R']) {
-        if (!isLocked(_colData[t][s][p])) normalSlots.push({ t, s, p });
+        if (!isFixed(_colData[t][s][p])) normalSlots.push({ t, s, p });
       }
     }
   }
 
-  // 最後一桌的可動格（代理人只能在這裡）
+  // 最後一桌的所有非固定格（空格也算，代理人才能填進去）
   const lastSlots = [];
   for (let p = 0; p < seatsPerSide; p++) {
     for (const s of ['L','R']) {
-      if (!isLocked(_colData[lastT][s][p])) lastSlots.push({ t: lastT, s, p });
+      if (!isFixed(_colData[lastT][s][p])) lastSlots.push({ t: lastT, s, p });
     }
   }
 
-  // 所有可移動成員
   const allSlots = [...normalSlots, ...lastSlots];
-  const all      = allSlots.map(({t,s,p}) => _colData[t][s][p]).filter(Boolean);
-  const active   = all.filter(m => !_proxySet[m.name]);
-  const proxies  = all.filter(m =>  _proxySet[m.name]);
 
-  // 清空所有可動格
+  // 收集所有可移動成員
+  const all     = allSlots.map(({t,s,p}) => _colData[t][s][p]).filter(Boolean);
+  const active  = all.filter(m => !_proxySet[m.name]);
+  const proxies = all.filter(m =>  _proxySet[m.name]);
+
+  // 清空所有非固定格
   for (const { t, s, p } of allSlots) _colData[t][s][p] = null;
 
-  // 活躍成員從前（一般桌）往後填
+  // 活躍成員從前往後填滿
   let ai = 0;
   for (const { t, s, p } of allSlots) {
     if (ai >= active.length) break;
     _colData[t][s][p] = active[ai++];
   }
 
-  // 代理人只填最後一桌，從後往前（右下角優先）
-  const lastSlotsRev = [...lastSlots].reverse();
+  // 代理人只填最後一桌，優先右欄由下往上，再左欄由下往上
+  const proxyTargets = [...lastSlots].sort((a, b) => {
+    if (a.s !== b.s) return a.s === 'R' ? -1 : 1; // R 欄優先
+    return b.p - a.p;                               // 下排優先
+  });
   let pi = 0;
-  for (const { t, s, p } of lastSlotsRev) {
+  for (const { t, s, p } of proxyTargets) {
     if (pi >= proxies.length) break;
     if (!_colData[t][s][p]) _colData[t][s][p] = proxies[pi++];
   }
 
-  // 確保董顧/大使永遠在最後一桌右欄末尾
+  // 董顧/大使永遠最後壓在最後一桌右欄末尾（蓋過代理）
   placeHonorMembers();
 
   for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
