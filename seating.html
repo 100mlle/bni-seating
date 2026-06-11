@@ -267,6 +267,15 @@ body {
 }
 .c-member:hover { box-shadow: 0 4px 18px rgba(21,128,61,.6); }
 
+/* 固定幹部 - 深綠（白字） */
+.c-pinned {
+  background: linear-gradient(145deg, #166534, #052e16);
+  border-color: #15803d;
+  color: #bbf7d0;
+  box-shadow: 0 2px 8px rgba(5,46,22,.5);
+}
+.c-pinned:hover { box-shadow: 0 4px 18px rgba(5,46,22,.7); }
+
 /* 幹部 - 橙紅（白字） */
 .c-special {
   background: linear-gradient(145deg, var(--orange3), var(--orange2));
@@ -903,7 +912,7 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
   });
 }
 
-// 幹部固定放在桌1左欄（依 PINNED_OFFICERS 順序由上到下）
+// 幹部固定：桌1左欄前3位、桌3左欄前2位
 function placePinnedOfficers() {
   if (!_colData.length) return;
   const pinnedNames = new Set(PINNED_OFFICERS);
@@ -919,17 +928,22 @@ function placePinnedOfficers() {
     }
   }
 
-  // 找出每位幹部的 ROSTER 資料
+  // 找出每位幹部的 ROSTER 資料，加上 _pinned 標記
   const pinnedSeats = PINNED_OFFICERS.map(name => {
     const r = ROSTER.find(m => m.name === name);
-    return r ? { name: r.name, role: r.role } : { name, role: '' };
+    return r ? { name: r.name, role: r.role, _pinned: true } : { name, role: '', _pinned: true };
   });
 
-  // 放到桌1左欄（pos 0 ~ seatsPerSide-1）
-  pinnedSeats.forEach((seat, i) => {
-    if (i < _colData[0].L.length) {
-      _colData[0].L[i] = seat;
-    }
+  // 桌1左欄：前3位（index 0-2）
+  const t1 = 0;
+  pinnedSeats.slice(0, 3).forEach((seat, i) => {
+    if (_colData[t1] && i < _colData[t1].L.length) _colData[t1].L[i] = seat;
+  });
+
+  // 桌3左欄：後2位（index 3-4），桌3是 index 2
+  const t3 = 2;
+  pinnedSeats.slice(3, 5).forEach((seat, i) => {
+    if (_colData[t3] && i < _colData[t3].L.length) _colData[t3].L[i] = seat;
   });
 }
 
@@ -962,7 +976,7 @@ function renderCol(colSeats, tIdx, side) {
     if (seat._absent)    return absentOval(tIdx, side, p);
     if (seat._guest)     return guestOval(seat._guest, tIdx, side, p);
     if (_proxySet[seat.name]) return mkProxyMemberOval(seat, tIdx, side, p); // 灰色代理
-    const cls = seat.role === '榮譽' ? 'c-orange' : 'c-member';
+    const cls = seat._pinned ? 'c-pinned' : seat.role === '榮譽' ? 'c-orange' : 'c-member';
     return mkOval(cls, seat.name, seat.role, tIdx, side, p);
   }).join('');
 }
