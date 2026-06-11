@@ -99,6 +99,15 @@ body {
   border: 1.5px solid rgba(255,255,255,.45);
 }
 .btn-print:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
+.btn-pin {
+  background: rgba(255,255,255,.18); color: white;
+  border: 1.5px solid rgba(255,255,255,.45);
+}
+.btn-pin:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
+.btn-pin.active {
+  background: #fbbf24; color: #7c2d12;
+  border-color: #fbbf24; font-weight: 800;
+}
 .ml-auto { margin-left: auto; display: flex; gap: 6px; }
 .size-btn {
   padding: 5px 11px; border-radius: 8px; font-size: .78rem; font-weight: 700;
@@ -436,6 +445,7 @@ body {
   </div>
 
   <div class="ml-auto">
+    <button class="btn btn-pin" id="btnPin" onclick="togglePinOfficers()" title="幹部固定在桌1左欄">📌 幹部固定</button>
     <button class="btn btn-shuffle" onclick="shuffle()">🔀 重新排列</button>
     <button class="btn btn-print"   onclick="window.print()">🖨️ 列印</button>
     <button class="btn btn-print"   id="btnPPT" onclick="exportPPT()">📊 匯出PPT</button>
@@ -629,6 +639,18 @@ let _infoSeats  = [
 ];
 // 確定代理人名單（name → seat object），排位時排除
 let _proxySet = {};
+
+// 幹部固定左欄功能
+let _pinOfficers = false;
+const PINNED_OFFICERS = ['程韋銘','黃信樺','王湘慈','陳政華','林彥合'];
+
+function togglePinOfficers() {
+  _pinOfficers = !_pinOfficers;
+  const btn = document.getElementById('btnPin');
+  btn.classList.toggle('active', _pinOfficers);
+  btn.textContent = _pinOfficers ? '📌 幹部固定 ✓' : '📌 幹部固定';
+  shuffle();
+}
 
 // 幹部固定席（主席/副主席/秘財）＋電音控制 — 可標為代理空位
 let _specialData = [
@@ -881,6 +903,36 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
   });
 }
 
+// 幹部固定放在桌1左欄（依 PINNED_OFFICERS 順序由上到下）
+function placePinnedOfficers() {
+  if (!_colData.length) return;
+  const pinnedNames = new Set(PINNED_OFFICERS);
+
+  // 先從所有位置移除這些人
+  for (let t = 0; t < _colData.length; t++) {
+    for (const s of ['L','R']) {
+      for (let p = 0; p < _colData[t][s].length; p++) {
+        if (_colData[t][s][p] && pinnedNames.has(_colData[t][s][p].name)) {
+          _colData[t][s][p] = null;
+        }
+      }
+    }
+  }
+
+  // 找出每位幹部的 ROSTER 資料
+  const pinnedSeats = PINNED_OFFICERS.map(name => {
+    const r = ROSTER.find(m => m.name === name);
+    return r ? { name: r.name, role: r.role } : { name, role: '' };
+  });
+
+  // 放到桌1左欄（pos 0 ~ seatsPerSide-1）
+  pinnedSeats.forEach((seat, i) => {
+    if (i < _colData[0].L.length) {
+      _colData[0].L[i] = seat;
+    }
+  });
+}
+
 // 董顧/大使固定放在最後一桌右欄最後兩個位置
 function placeHonorMembers() {
   const lastT = _colData.length - 1;
@@ -967,6 +1019,7 @@ function shuffle() {
 
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
   placeHonorMembers(); // 董顧/大使固定右下角
+  if (_pinOfficers) placePinnedOfficers(); // 幹部固定桌1左欄
   _selectedEl = null;
 
   // 幹部席（含代理功能）
