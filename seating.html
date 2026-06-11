@@ -931,11 +931,24 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
 }
 
 // 幹部固定：桌1左欄前3位、桌3左欄前2位
+// 被覆蓋的人移到空格補位
 function placePinnedOfficers() {
   if (!_colData.length) return;
-  const pinnedNames = new Set(PINNED_OFFICERS);
 
-  // 先從所有位置移除這些人
+  const pinnedSeats = PINNED_OFFICERS.map(name => {
+    const r = ROSTER.find(m => m.name === name);
+    return r ? { name: r.name, role: r.role, _pinned: true } : { name, role: '', _pinned: true };
+  });
+
+  // 目標格子：桌1 L[0,1,2]、桌3 L[0,1]
+  const targets = [
+    { t:0, s:'L', p:0 }, { t:0, s:'L', p:1 }, { t:0, s:'L', p:2 },
+    { t:2, s:'L', p:0 }, { t:2, s:'L', p:1 },
+  ];
+
+  // 先移除已存在的固定幹部（可能已在其他格）
+  const pinnedNames = new Set(PINNED_OFFICERS);
+  const displaced = []; // 被擠走的人
   for (let t = 0; t < _colData.length; t++) {
     for (const s of ['L','R']) {
       for (let p = 0; p < _colData[t][s].length; p++) {
@@ -946,23 +959,24 @@ function placePinnedOfficers() {
     }
   }
 
-  // 找出每位幹部的 ROSTER 資料，加上 _pinned 標記
-  const pinnedSeats = PINNED_OFFICERS.map(name => {
-    const r = ROSTER.find(m => m.name === name);
-    return r ? { name: r.name, role: r.role, _pinned: true } : { name, role: '', _pinned: true };
+  // 把目標格現有的人收集起來（要被替換）
+  targets.forEach(({ t, s, p }, i) => {
+    if (!_colData[t] || p >= _colData[t][s].length) return;
+    const cur = _colData[t][s][p];
+    if (cur && !cur._guest) displaced.push(cur); // 記錄被踢出的人
+    _colData[t][s][p] = pinnedSeats[i] || null;
   });
 
-  // 桌1左欄：前3位（index 0-2）
-  const t1 = 0;
-  pinnedSeats.slice(0, 3).forEach((seat, i) => {
-    if (_colData[t1] && i < _colData[t1].L.length) _colData[t1].L[i] = seat;
-  });
-
-  // 桌3左欄：後2位（index 3-4），桌3是 index 2
-  const t3 = 2;
-  pinnedSeats.slice(3, 5).forEach((seat, i) => {
-    if (_colData[t3] && i < _colData[t3].L.length) _colData[t3].L[i] = seat;
-  });
+  // 把被踢出的人填入空格（從前往後找）
+  for (let t = 0; t < _colData.length && displaced.length; t++) {
+    for (const s of ['L','R']) {
+      for (let p = 0; p < _colData[t][s].length && displaced.length; p++) {
+        if (!_colData[t][s][p]) {
+          _colData[t][s][p] = displaced.shift();
+        }
+      }
+    }
+  }
 }
 
 // 董顧/大使固定放在最後一桌右欄最後兩個位置
@@ -1040,18 +1054,20 @@ function calcNumTables(poolSize) {
 // ══════════════════════════════════════════════
 function shuffle() {
   const cap  = Math.min(memberCount, ROSTER.length);
-  const base = ROSTER.filter(m => !m.fix).slice(0, cap - 3);
-  // 全員（含代理人）都放入池，shuffle 後再由 pullUpSeats 把代理排到後面
-  // 董顧/大使不進隨機池，固定放到最後一桌右下角
-  _memberPool = rand([...base]);
+  const allBase = ROSTER.filter(m => !m.fix).slice(0, cap - 3);
 
-  const numTables = calcNumTables(_memberPool.length);
+  // 固定幹部先從隨機池移除（避免 buildTableCols 重複排進去）
+  const pinnedSet = _pinOfficers ? new Set(PINNED_OFFICERS) : new Set();
+  _memberPool = rand(allBase.filter(m => !pinnedSet.has(m.name)));
+
+  // 計算桌數時，把固定幹部人數也算進去（確保桌數足夠）
+  const totalForLayout = _memberPool.length + (_pinOfficers ? PINNED_OFFICERS.length : 0);
+  const numTables = calcNumTables(totalForLayout);
 
   _guestMap = buildGuestMap(numTables);
-
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
-  placeHonorMembers(); // 董顧/大使固定右下角
-  if (_pinOfficers) placePinnedOfficers(); // 幹部固定桌1左欄
+  placeHonorMembers();            // 董顧/大使固定右下角
+  if (_pinOfficers) placePinnedOfficers(); // 固定幹部填入保留格
   _selectedEl = null;
 
   // 幹部席（含代理功能）
@@ -1094,16 +1110,21 @@ function updateGuestsOnly(val) {
   document.getElementById('guestBadge').textContent = val;
 
   // 來賓數影響桌數，需重新建立 guestMap
-  const numTables = calcNumTables(_memberPool.length);
+  const totalForLayout = _memberPool.length + (_pinOfficers ? PINNED_OFFICERS.length : 0);
+  const numTables = calcNumTables(totalForLayout);
   _guestMap = buildGuestMap(numTables);
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
   _selectedEl = null;
 
-  placeHonorMembers(); // 董顧/大使固定右下角
+  placeHonorMembers();
+  if (_pinOfficers) placePinnedOfficers();
+
+  if (Object.keys(_proxySet).length) pullUpSeats();
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
   grid.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
+  renderProxyPanel();
 }
 
 // ══════════════════════════════════════════════
