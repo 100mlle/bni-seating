@@ -1405,21 +1405,41 @@ async function exportPPT() {
   proxyPanel.style.display = 'none';
   await new Promise(r => setTimeout(r, 60));
 
-  // 2. 撐開頁面寬度，截取座位圖
-  const EXPORT_W = 1600;
+  // 2. 建立 PPT 規格，計算截圖目標尺寸
+  const now     = new Date();
+  const session = document.getElementById('sessionInput')?.value || '13';
+  const dateStr = `${now.getFullYear()}年 第${session}會期`;
+
+  const pptx  = new PptxGenJS();
+  pptx.layout = 'LAYOUT_WIDE';
+  const SW = 13.3333, SH = 7.5;
+  const HDR = 0.80;   // 標題列高度（英寸）
+
+  // PPT 內容區長寬比 → 以此為截圖目標比例，讓圖片填滿投影片
+  const PPT_AR = SW / (SH - HDR); // ≈ 2.0
+
+  // 先以預設寬度渲染，取得內容高度
+  const EXPORT_W = 1800;
   const prevW   = document.body.style.width;
   const prevMin = document.body.style.minWidth;
   document.body.style.width    = EXPORT_W + 'px';
   document.body.style.minWidth = EXPORT_W + 'px';
-  await new Promise(r => setTimeout(r, 80));
+  await new Promise(r => setTimeout(r, 100));
 
   const capH = document.body.scrollHeight;
+  // 若內容比 PPT 比例更高，就加寬截圖讓同樣內容縮小更少
+  const targetW = Math.max(EXPORT_W, Math.round(capH * PPT_AR));
+  document.body.style.width    = targetW + 'px';
+  document.body.style.minWidth = targetW + 'px';
+  await new Promise(r => setTimeout(r, 80));
+
+  const finalH = document.body.scrollHeight;
   const canvas = await html2canvas(document.body, {
-    scale: 1.5,
+    scale: 2,
     useCORS: true,
     backgroundColor: '#f8fafc',
-    width: EXPORT_W, height: capH,
-    windowWidth: EXPORT_W, windowHeight: capH,
+    width: targetW, height: finalH,
+    windowWidth: targetW, windowHeight: finalH,
     scrollX: 0, scrollY: 0,
   });
 
@@ -1432,16 +1452,8 @@ async function exportPPT() {
 
   const imgData = canvas.toDataURL('image/png');
 
-  // 4. 建立 PPT（13.3333 × 7.5 英寸 = 16:9 寬螢幕）
-  const now     = new Date();
-  const session = document.getElementById('sessionInput')?.value || '13';
-  const dateStr = `${now.getFullYear()}年 第${session}會期`;
-
-  const pptx  = new PptxGenJS();
-  pptx.layout = 'LAYOUT_WIDE';
+  // 4. 建立投影片
   const slide = pptx.addSlide();
-  const SW = 13.3333, SH = 7.5;
-  const HDR = 0.80;   // 標題列高度（英寸）
 
   // ── 橘色標題列 ──
   slide.addShape(pptx.ShapeType.rect, {
@@ -1449,7 +1461,7 @@ async function exportPPT() {
     fill: { color: 'EA580C' }, line: { color: 'EA580C' },
   });
 
-  // ── 標題文字（左）── 長溙分會　例會座位表
+  // ── 標題文字（左）──
   slide.addText('長溙分會　例會座位表', {
     x: 0.25, y: 0, w: 7.0, h: HDR,
     fontSize: 32, bold: true, color: 'FFFFFF',
@@ -1463,11 +1475,11 @@ async function exportPPT() {
     fontFace: 'Microsoft JhengHei', valign: 'middle', align: 'right',
   });
 
-  // ── 座位圖（標題列以下，等比例填滿） ──
-  const imgArea = SH - HDR;
-  const imgAR   = canvas.width / canvas.height;
+  // ── 座位圖：填滿標題列以下全部空間 ──
+  const imgAreaH = SH - HDR;
+  const imgAR    = canvas.width / canvas.height;
   let iW = SW, iH = SW / imgAR;
-  if (iH > imgArea) { iH = imgArea; iW = iH * imgAR; }
+  if (iH > imgAreaH) { iH = imgAreaH; iW = iH * imgAR; }
   const iX = (SW - iW) / 2;
   slide.addImage({ data: imgData, x: iX, y: HDR, w: iW, h: iH });
 
