@@ -951,24 +951,29 @@ function placePinnedOfficers() {
     return r ? { name: r.name, role: r.role, _pinned: true } : { name, role: '', _pinned: true };
   });
 
-  // 第二組桌子的 index：依列數決定
-  // 2列 → 桌3（index 2）；3列 → 桌4（index 3）
-  const t2nd = gridCols === 3 ? 3 : 2;
-  // 第三組（4人桌時 seatsPerSide=2，桌1只有2格，第5人需第3張桌）
-  const t3rd = gridCols === 3 ? 6 : 4;
-
-  // 依 seatsPerSide 動態分配：桌1左欄填滿，剩下的到下一張桌
-  const targets = [];
-  let remaining = [...Array(PINNED_OFFICERS.length).keys()]; // [0,1,2,3,4]
-  const tableOrder = [0, t2nd, t3rd]; // 依序嘗試的桌子
-  for (const tIdx of tableOrder) {
-    for (let p = 0; p < seatsPerSide && remaining.length; p++) {
-      if (tIdx < _colData.length) {
-        targets.push({ t: tIdx, s: 'L', p });
-        remaining.shift();
-      }
+  // 動態產生候補桌：先取每列最左桌（index 0, gridCols, 2*gridCols...），
+  // 不夠再依序加其他桌，確保桌子數量夠放5位幹部
+  const tableOrder = [];
+  for (let row = 0; row * gridCols < _colData.length; row++) {
+    tableOrder.push(row * gridCols);
+  }
+  // 若最左欄不夠（桌子排數×seatsPerSide < 5），補入其他桌
+  if (tableOrder.length * seatsPerSide < PINNED_OFFICERS.length) {
+    for (let i = 0; i < _colData.length; i++) {
+      if (!tableOrder.includes(i)) tableOrder.push(i);
+      if (tableOrder.length * seatsPerSide >= PINNED_OFFICERS.length) break;
     }
-    if (!remaining.length) break;
+  }
+
+  // 依序填入目標格
+  const targets = [];
+  let left = PINNED_OFFICERS.length;
+  for (const tIdx of tableOrder) {
+    for (let p = 0; p < seatsPerSide && left > 0; p++) {
+      targets.push({ t: tIdx, s: 'L', p });
+      left--;
+    }
+    if (!left) break;
   }
 
   // 先移除已存在的固定幹部（可能已在其他格）
