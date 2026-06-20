@@ -954,12 +954,22 @@ function placePinnedOfficers() {
   // 第二組桌子的 index：依列數決定
   // 2列 → 桌3（index 2）；3列 → 桌4（index 3）
   const t2nd = gridCols === 3 ? 3 : 2;
+  // 第三組（4人桌時 seatsPerSide=2，桌1只有2格，第5人需第3張桌）
+  const t3rd = gridCols === 3 ? 6 : 4;
 
-  // 目標格子：桌1 L[0,1,2]、第二組桌 L[0,1]
-  const targets = [
-    { t:0,    s:'L', p:0 }, { t:0,    s:'L', p:1 }, { t:0,    s:'L', p:2 },
-    { t:t2nd, s:'L', p:0 }, { t:t2nd, s:'L', p:1 },
-  ];
+  // 依 seatsPerSide 動態分配：桌1左欄填滿，剩下的到下一張桌
+  const targets = [];
+  let remaining = [...Array(PINNED_OFFICERS.length).keys()]; // [0,1,2,3,4]
+  const tableOrder = [0, t2nd, t3rd]; // 依序嘗試的桌子
+  for (const tIdx of tableOrder) {
+    for (let p = 0; p < seatsPerSide && remaining.length; p++) {
+      if (tIdx < _colData.length) {
+        targets.push({ t: tIdx, s: 'L', p });
+        remaining.shift();
+      }
+    }
+    if (!remaining.length) break;
+  }
 
   // 先移除已存在的固定幹部（可能已在其他格）
   const pinnedNames = new Set(PINNED_OFFICERS);
