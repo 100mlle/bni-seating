@@ -32,6 +32,8 @@ body {
   padding: 12px;
   min-width: 980px;
   min-height: 100vh;
+  width: 100vw;
+  overflow-x: hidden;
 }
 
 /* ── TOP BAR ── */
@@ -218,8 +220,8 @@ body {
   background: linear-gradient(145deg, rgba(255,255,255,.12) 0%, transparent 55%);
   pointer-events: none;
 }
-.table-rect.sz-sm { width: 112px; height: 58px; }
-.table-rect.sz-md { width: 132px; height: 130px; }
+.table-rect.sz-sm { width: 140px; height: 72px; }
+.table-rect.sz-md { width: 160px; height: 160px; }
 .table-rect.proxy {
   background: linear-gradient(160deg, #f1f5f9, #e2e8f0);
   border-color: #cbd5e1;
@@ -228,7 +230,7 @@ body {
 
 /* ── SEAT OVAL ── */
 .oval {
-  width: 100px; height: 48px; border-radius: 12px;
+  width: 130px; height: 62px; border-radius: 14px;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   text-align: center; border: 2px solid transparent;
@@ -240,14 +242,14 @@ body {
   content: '';
   position: absolute; top: 0; left: 0; right: 0; height: 45%;
   background: linear-gradient(180deg, rgba(255,255,255,.28), transparent);
-  border-radius: 10px 10px 0 0; pointer-events: none;
+  border-radius: 12px 12px 0 0; pointer-events: none;
 }
 .oval:hover { transform: scale(1.06); }
 .oval .n {
-  font-size: 1.08rem; font-weight: 900; line-height: 1.15;
+  font-size: 1.32rem; font-weight: 900; line-height: 1.15;
   letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0,0,0,.18);
 }
-.oval .r  { font-size: .5rem; opacity: .88; margin-top: 1px; font-weight: 700; letter-spacing: .03em; }
+.oval .r  { font-size: .68rem; opacity: .88; margin-top: 1px; font-weight: 700; letter-spacing: .03em; }
 
 /* 指定位置：選取狀態（一般座位 & info oval） */
 .oval.selected, .info-oval.selected {
@@ -362,14 +364,7 @@ body {
 
 /* ── 代理人面板 ── */
 .proxy-panel {
-  flex-shrink: 0; width: 120px;
-  background: white;
-  border: 1.5px solid #fecaca;
-  border-radius: 14px;
-  padding: 10px 8px;
-  box-shadow: var(--shadow-sm);
-  display: flex; flex-direction: column; gap: 6px;
-  align-self: flex-start;
+  display: none;
 }
 .proxy-panel-title {
   font-size: .68rem; font-weight: 800; color: #dc2626;
@@ -1401,11 +1396,13 @@ async function exportPPT() {
   const btn = document.getElementById('btnPPT');
   btn.textContent = '⏳ 產生中…'; btn.disabled = true;
 
-  // 1. 隱藏控制列 & 圖例（PPT 不需要顯示）
-  const topbar = document.querySelector('.topbar');
-  const legend = document.querySelector('.legend');
-  topbar.style.display = 'none';
-  legend.style.display = 'none';
+  // 1. 隱藏控制列 & 圖例 & 確定代理面板（PPT 不需要顯示）
+  const topbar     = document.querySelector('.topbar');
+  const legend     = document.querySelector('.legend');
+  const proxyPanel = document.getElementById('proxyPanel');
+  topbar.style.display     = 'none';
+  legend.style.display     = 'none';
+  proxyPanel.style.display = 'none';
   await new Promise(r => setTimeout(r, 60));
 
   // 2. 撐開頁面寬度，截取座位圖
@@ -1429,8 +1426,9 @@ async function exportPPT() {
   // 3. 還原頁面
   document.body.style.width    = prevW;
   document.body.style.minWidth = prevMin;
-  topbar.style.display = '';
-  legend.style.display = '';
+  topbar.style.display     = '';
+  legend.style.display     = '';
+  proxyPanel.style.display = '';
 
   const imgData = canvas.toDataURL('image/png');
 
@@ -1443,7 +1441,7 @@ async function exportPPT() {
   pptx.layout = 'LAYOUT_WIDE';
   const slide = pptx.addSlide();
   const SW = 13.3333, SH = 7.5;
-  const HDR = 0.58;   // 標題列高度（英寸）
+  const HDR = 0.80;   // 標題列高度（英寸）
 
   // ── 橘色標題列 ──
   slide.addShape(pptx.ShapeType.rect, {
@@ -1453,15 +1451,15 @@ async function exportPPT() {
 
   // ── 標題文字（左）── 長溙分會　例會座位表
   slide.addText('長溙分會　例會座位表', {
-    x: 0.25, y: 0, w: 6.0, h: HDR,
-    fontSize: 22, bold: true, color: 'FFFFFF',
+    x: 0.25, y: 0, w: 7.0, h: HDR,
+    fontSize: 32, bold: true, color: 'FFFFFF',
     fontFace: 'Microsoft JhengHei', valign: 'middle',
   });
 
   // ── 日期資訊 + 副主席謹製（右）──
   slide.addText(`${dateStr}　　副主席謹製`, {
-    x: 6.4, y: 0, w: SW - 6.4 - 0.2, h: HDR,
-    fontSize: 12, color: 'FFE0C8',
+    x: 7.4, y: 0, w: SW - 7.4 - 0.2, h: HDR,
+    fontSize: 18, color: 'FFE0C8',
     fontFace: 'Microsoft JhengHei', valign: 'middle', align: 'right',
   });
 
