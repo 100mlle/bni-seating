@@ -1052,12 +1052,14 @@ function placePinnedOfficers() {
 }
 
 // 董顧/大使固定放在最後一桌右欄最後兩個位置
+// 若目標格已有成員，先收集被擠走的人再安置到空格
 function placeHonorMembers() {
   const lastT = _colData.length - 1;
   if (lastT < 0) return;
   const rLen = _colData[lastT].R.length;
-  // 先從所有桌移除已存在的董顧/大使（避免重複）
   const honorNames = new Set(_honorMembers.map(h => h.name));
+
+  // 先移除已存在的董顧/大使（避免重複）
   for (let t = 0; t < _colData.length; t++) {
     for (const s of ['L','R']) {
       for (let p = 0; p < _colData[t][s].length; p++) {
@@ -1067,11 +1069,25 @@ function placeHonorMembers() {
       }
     }
   }
-  // 放到最後一桌右欄末尾
+
+  // 放到最後一桌右欄末尾，若有人被擠走先收集
+  const displaced = [];
   _honorMembers.forEach((h, i) => {
     const pos = rLen - 1 - i;
-    if (pos >= 0) _colData[lastT].R[pos] = { name: h.name, role: h.role };
+    if (pos < 0) return;
+    const cur = _colData[lastT].R[pos];
+    if (cur && !cur._guest && !honorNames.has(cur.name)) displaced.push(cur);
+    _colData[lastT].R[pos] = { name: h.name, role: h.role };
   });
+
+  // 被擠走的人找空格安置（從第一桌開始找）
+  for (let t = 0; t < _colData.length && displaced.length; t++) {
+    for (const s of ['L','R']) {
+      for (let p = 0; p < _colData[t][s].length && displaced.length; p++) {
+        if (!_colData[t][s][p]) _colData[t][s][p] = displaced.shift();
+      }
+    }
+  }
 }
 
 function renderCol(colSeats, tIdx, side) {
