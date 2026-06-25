@@ -362,6 +362,33 @@ body {
   font-size: .42rem; opacity: .55; font-weight: 600;
 }
 
+/* ── 成員選擇下拉 ── */
+#memberPicker {
+  position: fixed; z-index: 999;
+  background: white; border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.22);
+  border: 1.5px solid #e2e8f0;
+  padding: 6px; min-width: 160px; max-height: 280px;
+  overflow-y: auto; display: none; flex-direction: column; gap: 2px;
+}
+#memberPicker .mp-title {
+  font-size: .68rem; font-weight: 800; color: #64748b;
+  padding: 2px 6px 6px; border-bottom: 1px solid #f1f5f9; margin-bottom: 2px;
+}
+#memberPicker .mp-item {
+  padding: 6px 10px; border-radius: 7px; cursor: pointer;
+  font-size: .8rem; font-weight: 700; color: #1e293b;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+#memberPicker .mp-item:hover { background: #f1f5f9; }
+#memberPicker .mp-role { font-size: .65rem; color: #94a3b8; font-weight: 500; }
+#memberPicker .mp-cancel {
+  padding: 5px 10px; border-radius: 7px; cursor: pointer;
+  font-size: .75rem; color: #ef4444; font-weight: 700; text-align: center;
+  border-top: 1px solid #f1f5f9; margin-top: 2px;
+}
+#memberPicker .mp-cancel:hover { background: #fef2f2; }
+
 /* ── 代理人面板 ── */
 .proxy-panel {
   display: none;
@@ -450,11 +477,14 @@ body {
 
   <div class="ml-auto">
     <button class="btn btn-pin" id="btnPin" onclick="togglePinOfficers()" title="幹部固定在桌1左欄">📌 幹部固定</button>
+    <button class="btn btn-print" onclick="addEmptyTable()" title="新增一張空桌">＋桌</button>
     <button class="btn btn-shuffle" onclick="shuffle()">🔀 重新排列</button>
     <button class="btn btn-print"   onclick="window.print()">🖨️ 列印</button>
     <button class="btn btn-print"   id="btnPPT" onclick="exportPPT()">📊 匯出PPT</button>
   </div>
 </div>
+
+<div id="memberPicker"></div>
 
 <div class="legend">
   <span style="font-weight:800;color:#f97316;margin-right:4px">▸</span>
@@ -863,7 +893,9 @@ function mkProxyMemberOval(seat, t, s, p) {
 
 // 空格：可見虛線框，可點擊互換（讓人移入）
 function emptySlotOval(t, s, p) {
-  return `<div class="oval c-slot-empty" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" title="點擊選取空位後可與人名互換"></div>`;
+  return `<div class="oval c-slot-empty" data-t="${t}" data-s="${s}" data-p="${p}"
+    onclick="event.stopPropagation();showMemberPicker(${t},'${s}',${p},this);seatClick(this)"
+    title="點擊選取 / 下拉選人"></div>`;
 }
 
 // ══════════════════════════════════════════════
@@ -989,12 +1021,22 @@ function placePinnedOfficers() {
     }
   }
 
-  // 把目標格現有的人收集起來（要被替換）
+  // 把目標格現有的人收集起來（要被替換），來賓格不覆蓋，改找下一個非來賓空格
   targets.forEach(({ t, s, p }, i) => {
-    if (!_colData[t] || p >= _colData[t][s].length) return;
-    const cur = _colData[t][s][p];
-    if (cur && !cur._guest) displaced.push(cur); // 記錄被踢出的人
-    _colData[t][s][p] = pinnedSeats[i] || null;
+    if (!_colData[t]) return;
+    // 若目標格是來賓，往後找同欄第一個非來賓格
+    let actualP = p;
+    while (actualP < _colData[t][s].length && _colData[t][s][actualP] && _colData[t][s][actualP]._guest) {
+      actualP++;
+    }
+    if (actualP >= _colData[t][s].length) {
+      // 找不到，放到 displaced 讓後面找空位
+      displaced.push(pinnedSeats[i]);
+      return;
+    }
+    const cur = _colData[t][s][actualP];
+    if (cur && !cur._guest) displaced.push(cur);
+    _colData[t][s][actualP] = pinnedSeats[i] || null;
   });
 
   // 把被踢出的人填入空格（從前往後找）
@@ -1238,6 +1280,88 @@ function seatClick(el) {
 // ══════════════════════════════════════════════
 // 移至代理（✕ 按鈕呼叫）
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+// 新增空桌
+// ══════════════════════════════════════════════
+function addEmptyTable() {
+  const emptyCol = () => Array(seatsPerSide).fill(null);
+  _colData.push({ L: emptyCol(), R: emptyCol() });
+  const grid = document.getElementById('tablesGrid');
+  grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
+  grid.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
+}
+
+// ══════════════════════════════════════════════
+// 成員選擇器（空格點擊後下拉選人）
+// ══════════════════════════════════════════════
+let _pickerTarget = null; // { t, s, p }
+
+function showMemberPicker(t, s, p, anchorEl) {
+  _pickerTarget = { t, s, p };
+  const picker = document.getElementById('memberPicker');
+
+  // 計算已上座的人名
+  const seated = new Set();
+  for (let ti = 0; ti < _colData.length; ti++) {
+    for (const si of ['L','R']) {
+      for (const seat of _colData[ti][si]) {
+        if (seat && seat.name) seated.add(seat.name);
+      }
+    }
+  }
+  _infoSeats.forEach(s => s && s.name && seated.add(s.name));
+  _specialData.forEach(d => !d.empty && seated.add(d.name));
+
+  // 可選成員：ROSTER 全部（含董顧/大使）未落座者
+  const available = [
+    ...ROSTER.filter(m => !seated.has(m.name)),
+    ..._honorMembers.filter(m => !seated.has(m.name)),
+  ];
+
+  if (!available.length) {
+    picker.style.display = 'none';
+    return;
+  }
+
+  picker.innerHTML =
+    `<div class="mp-title">選擇成員</div>` +
+    available.map(m =>
+      `<div class="mp-item" onclick="pickMember('${m.name}','${m.role||''}')">
+        <span>${m.name}</span>
+        <span class="mp-role">${m.role||''}</span>
+      </div>`
+    ).join('') +
+    `<div class="mp-cancel" onclick="closePicker()">取消</div>`;
+
+  // 定位到錨點旁邊
+  const rect = anchorEl.getBoundingClientRect();
+  picker.style.display = 'flex';
+  picker.style.left = Math.min(rect.left, window.innerWidth - 180) + 'px';
+  picker.style.top  = (rect.bottom + 6) + 'px';
+}
+
+function pickMember(name, role) {
+  if (!_pickerTarget) return;
+  const { t, s, p } = _pickerTarget;
+  const r = ROSTER.find(m => m.name === name) || { name, role };
+  _colData[t][s][p] = { name: r.name, role: r.role };
+  redrawTableCard(t);
+  closePicker();
+}
+
+function closePicker() {
+  document.getElementById('memberPicker').style.display = 'none';
+  _pickerTarget = null;
+}
+
+// 點擊其他地方關閉
+document.addEventListener('click', e => {
+  const picker = document.getElementById('memberPicker');
+  if (picker && !picker.contains(e.target) && !e.target.closest('.c-slot-empty')) {
+    closePicker();
+  }
+});
+
 function seatRemoveByCoord(t, s, p) {
   if (_selectedEl)    { _selectedEl.classList.remove('selected'); _selectedEl = null; }
   if (_selectedProxy) { _selectedProxy.el.classList.remove('selected'); _selectedProxy = null; }
