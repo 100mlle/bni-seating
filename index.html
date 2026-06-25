@@ -516,7 +516,7 @@ body {
       <span class="oval-name" style="font-weight:900;font-size:1rem">資訊</span>
       <span class="oval-sub" style="font-size:.52rem;opacity:.85;margin-top:1px"></span>
     </div>
-    <div class="info-desk"><span>傳麥手</span></div>
+    <div style="font-size:.62rem;color:#9333ea;font-weight:800;text-align:center;margin-top:6px;letter-spacing:.05em">🎤 傳麥</div>
     <div id="mic-col" style="display:flex;flex-direction:column;gap:6px;align-items:center"></div>
   </div>
   <div class="main-area">
@@ -1699,20 +1699,16 @@ async function exportPPT() {
     fontFace: 'Microsoft JhengHei', valign: 'middle',
   });
 
-  // ── 日期資訊 + 副主席謹製（右）──
-  slide.addText(`${dateStr}　　副主席謹製`, {
+  // ── 日期資訊 + 接待組謹制（右）──
+  slide.addText(`${dateStr}　　接待組 謹制`, {
     x: 7.4, y: 0, w: SW - 7.4 - 0.2, h: HDR,
     fontSize: 18, color: 'FFE0C8',
     fontFace: 'Microsoft JhengHei', valign: 'middle', align: 'right',
   });
 
   // ── 座位圖：填滿標題列以下全部空間 ──
-  const imgAreaH = SH - HDR;
-  const imgAR    = canvas.width / canvas.height;
-  let iW = SW, iH = SW / imgAR;
-  if (iH > imgAreaH) { iH = imgAreaH; iW = iH * imgAR; }
-  const iX = (SW - iW) / 2;
-  slide.addImage({ data: imgData, x: iX, y: HDR, w: iW, h: iH });
+  // 圖像填滿整個標題列以下空間（不留邊距）
+  slide.addImage({ data: imgData, x: 0, y: HDR, w: SW, h: SH - HDR });
 
   // 5. 匯出
   const fname = `BNI長溙分會座位圖_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.pptx`;
