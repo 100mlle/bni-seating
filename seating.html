@@ -690,7 +690,8 @@ let _proxySet = {};
 
 // 幹部固定左欄功能
 let _pinOfficers = false;
-const PINNED_OFFICERS = ['陳政華','王湘慈','林彥合','黃信樺','程韋銘'];
+const PINNED_OFFICERS = ['陳政華','王湘慈','林彥合','黃信樺'];
+const MIC_MEMBERS    = ['劉峻嘉','程韋銘']; // 傳麥手固定，不隨機
 
 function togglePinOfficers() {
   _pinOfficers = !_pinOfficers;
@@ -720,10 +721,10 @@ function rand(arr) {
 }
 
 // 董顧/大使 固定加入座位池（可改名）
-// 傳麥手固定席（2位，淺紫色，可雙擊改名）
+// 傳麥手固定席（劉峻嘉/程韋銘，淺紫色，固定不隨機）
 let _micSeats = [
-  { name:'傳麥手1', role:'傳麥' },
-  { name:'傳麥手2', role:'傳麥' },
+  { name:'劉峻嘉', role:'傳麥手' },
+  { name:'程韋銘', role:'傳麥手' },
 ];
 
 function renderMicSeats() {
@@ -1015,6 +1016,42 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
   });
 }
 
+// 傳麥手固定在最後一桌左欄（劉峻嘉/程韋銘）
+function placeMicMembers() {
+  const lastT = _colData.length - 1;
+  if (lastT < 0) return;
+  const micSet = new Set(MIC_MEMBERS);
+
+  // 先移除已存在的傳麥手
+  for (let t = 0; t < _colData.length; t++)
+    for (const s of ['L','R'])
+      for (let p = 0; p < _colData[t][s].length; p++)
+        if (_colData[t][s][p] && micSet.has(_colData[t][s][p].name))
+          _colData[t][s][p] = null;
+
+  const displaced = [];
+  MIC_MEMBERS.forEach((name, i) => {
+    const r = ROSTER.find(m => m.name === name);
+    const seat = { name, role: r ? r.role : '', _mic: true };
+    const p = i;
+    if (p >= _colData[lastT].L.length) { displaced.push(seat); return; }
+    const cur = _colData[lastT].L[p];
+    if (cur && !cur._guest) displaced.push(cur);
+    else if (cur && cur._guest) {
+      // 把來賓移到右欄空格
+      let moved = false;
+      for (let rp = 0; rp < _colData[lastT].R.length && !moved; rp++)
+        if (!_colData[lastT].R[rp]) { _colData[lastT].R[rp] = cur; moved = true; }
+    }
+    _colData[lastT].L[p] = seat;
+  });
+
+  for (let t = 0; t < _colData.length && displaced.length; t++)
+    for (const s of ['L','R'])
+      for (let p = 0; p < _colData[t][s].length && displaced.length; p++)
+        if (!_colData[t][s][p]) _colData[t][s][p] = displaced.shift();
+}
+
 // 幹部固定：桌1左欄前3位、桌3左欄前2位
 // 被覆蓋的人移到空格補位
 function placePinnedOfficers() {
@@ -1052,15 +1089,27 @@ function placePinnedOfficers() {
     }
   }
 
-  // 依序為每位幹部找位置：跳過來賓格，已佔用的一般成員收集到 displaced
+  // 依序為每位幹部找位置：來賓格移走再放幹部，一般成員收集到 displaced
   let officerIdx = 0;
   for (const tIdx of tableOrder) {
     if (officerIdx >= pinnedSeats.length) break;
     if (!_colData[tIdx]) continue;
     for (let p = 0; p < _colData[tIdx].L.length && officerIdx < pinnedSeats.length; p++) {
       const cur = _colData[tIdx].L[p];
-      if (cur && cur._guest) continue;       // 來賓格跳過
-      if (cur && !cur._guest) displaced.push(cur); // 一般成員被擠走
+      if (cur && cur._guest) {
+        // 把來賓移到同桌右欄空格，或其他桌空格
+        let moved = false;
+        for (let rp = 0; rp < _colData[tIdx].R.length && !moved; rp++)
+          if (!_colData[tIdx].R[rp]) { _colData[tIdx].R[rp] = cur; moved = true; }
+        if (!moved)
+          for (let t2 = 0; t2 < _colData.length && !moved; t2++)
+            for (const s2 of ['R','L'])
+              for (let p2 = 0; p2 < _colData[t2][s2].length && !moved; p2++)
+                if (!_colData[t2][s2][p2]) { _colData[t2][s2][p2] = cur; moved = true; }
+        _colData[tIdx].L[p] = null;
+      } else if (cur) {
+        displaced.push(cur); // 一般成員被擠走
+      }
       _colData[tIdx].L[p] = pinnedSeats[officerIdx++];
     }
   }
@@ -1120,7 +1169,8 @@ function renderCol(colSeats, tIdx, side) {
     if (seat._absent)    return absentOval(tIdx, side, p);
     if (seat._guest)     return guestOval(seat._guest, tIdx, side, p);
     if (_proxySet[seat.name]) return mkProxyMemberOval(seat, tIdx, side, p); // 灰色代理
-    const cls = seat._pinned ? 'c-pinned' : seat.role === '榮譽' ? 'c-orange' : 'c-member';
+    const micSet = new Set(MIC_MEMBERS);
+    const cls = micSet.has(seat.name) ? 'c-mic' : seat._pinned ? 'c-pinned' : seat.role === '榮譽' ? 'c-orange' : 'c-member';
     return mkOval(cls, seat.name, seat.role, tIdx, side, p);
   }).join('');
 }
@@ -1168,16 +1218,19 @@ function shuffle() {
   const cap  = Math.min(memberCount, ROSTER.length);
   const allBase = ROSTER.filter(m => !m.fix).slice(0, cap - 3);
 
-  // 固定幹部先從隨機池移除（避免 buildTableCols 重複排進去）
+  // 傳麥手 + 固定幹部先從隨機池移除
+  const micSet    = new Set(MIC_MEMBERS);
   const pinnedSet = _pinOfficers ? new Set(PINNED_OFFICERS) : new Set();
-  _memberPool = rand(allBase.filter(m => !pinnedSet.has(m.name)));
+  _memberPool = rand(allBase.filter(m => !pinnedSet.has(m.name) && !micSet.has(m.name)));
 
-  // 計算桌數時，把固定幹部人數也算進去（確保桌數足夠）
-  const totalForLayout = _memberPool.length + (_pinOfficers ? PINNED_OFFICERS.length : 0);
+  // 計算桌數時把固定人數算進去
+  const fixedCount = (_pinOfficers ? PINNED_OFFICERS.length : 0) + MIC_MEMBERS.length;
+  const totalForLayout = _memberPool.length + fixedCount;
   const numTables = calcNumTables(totalForLayout);
 
   _guestMap = buildGuestMap(numTables);
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
+  placeMicMembers();              // 傳麥手固定在最後一桌左欄
   placeHonorMembers();            // 董顧/大使固定右下角
   if (_pinOfficers) placePinnedOfficers(); // 固定幹部填入保留格
   _selectedEl = null;
@@ -1223,12 +1276,14 @@ function updateGuestsOnly(val) {
   document.getElementById('guestBadge').textContent = val;
 
   // 來賓數影響桌數，需重新建立 guestMap
-  const totalForLayout = _memberPool.length + (_pinOfficers ? PINNED_OFFICERS.length : 0);
+  const fixedCount2 = (_pinOfficers ? PINNED_OFFICERS.length : 0) + MIC_MEMBERS.length;
+  const totalForLayout = _memberPool.length + fixedCount2;
   const numTables = calcNumTables(totalForLayout);
   _guestMap = buildGuestMap(numTables);
   _colData = buildTableCols(_guestMap, _memberPool, guestCount);
   _selectedEl = null;
 
+  placeMicMembers();
   placeHonorMembers();
   if (_pinOfficers) placePinnedOfficers();
 
