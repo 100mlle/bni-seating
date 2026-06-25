@@ -314,6 +314,14 @@ body {
   background: linear-gradient(145deg, #f1f5f9, #e2e8f0);
   border-color: #cbd5e1; color: #94a3b8;
 }
+/* 傳麥手 - 淺紫色 */
+.c-mic {
+  background: linear-gradient(145deg, #c084fc, #9333ea);
+  border-color: #d8b4fe; color: #ffffff;
+  box-shadow: 0 2px 8px rgba(147,51,234,.35);
+}
+.c-mic:hover { box-shadow: 0 4px 18px rgba(147,51,234,.55); }
+.table-card.t-mic { border-top: 3px solid #9333ea; background: linear-gradient(to bottom, #faf5ff, white); }
 .c-empty { background: transparent; border: 2px dashed #e2e8f0; }
 /* oval 外層包裹（雙按鈕用） */
 .oval-wrap { position: relative; display: inline-flex; }
@@ -527,6 +535,12 @@ body {
           <div class="t-col" id="off-R"></div>
         </div>
       </div>
+      <div class="table-card t-mic" style="min-width:140px">
+        <div class="table-card-label">🎤 傳麥手</div>
+        <div class="table-inner" style="justify-content:center">
+          <div class="t-col" id="mic-col"></div>
+        </div>
+      </div>
     </div>
     <div class="tables-grid" id="tablesGrid"></div>
   </div>
@@ -706,6 +720,34 @@ function rand(arr) {
 }
 
 // 董顧/大使 固定加入座位池（可改名）
+// 傳麥手固定席（2位，淺紫色，可雙擊改名）
+let _micSeats = [
+  { name:'傳麥手1', role:'傳麥' },
+  { name:'傳麥手2', role:'傳麥' },
+];
+
+function renderMicSeats() {
+  const col = document.getElementById('mic-col');
+  if (!col) return;
+  col.innerHTML = _micSeats.map((seat, i) =>
+    `<div class="oval-wrap">
+      <div class="oval c-mic" ondblclick="editMicSeat(${i});event.stopPropagation()" title="雙擊編輯名字">
+        <span class="n">${seat.name}</span>
+        <span class="r">${seat.role !== '傳麥' ? seat.role : ''}</span>
+      </div>
+    </div>`
+  ).join('');
+}
+
+function editMicSeat(i) {
+  const seat = _micSeats[i];
+  const name = prompt('傳麥手名字：', seat.name);
+  if (name === null) return;
+  const role = prompt('職稱（可空白）：', seat.role === '傳麥' ? '' : seat.role);
+  _micSeats[i] = { name: name.trim() || seat.name, role: role?.trim() || '傳麥' };
+  renderMicSeats();
+}
+
 let _honorMembers = [
   { name:'董顧', role:'榮譽' },
   { name:'大使', role:'榮譽' },
@@ -997,20 +1039,9 @@ function placePinnedOfficers() {
     }
   }
 
-  // 依序填入目標格
-  const targets = [];
-  let left = PINNED_OFFICERS.length;
-  for (const tIdx of tableOrder) {
-    for (let p = 0; p < seatsPerSide && left > 0; p++) {
-      targets.push({ t: tIdx, s: 'L', p });
-      left--;
-    }
-    if (!left) break;
-  }
-
   // 先移除已存在的固定幹部（可能已在其他格）
   const pinnedNames = new Set(PINNED_OFFICERS);
-  const displaced = []; // 被擠走的人
+  const displaced = [];
   for (let t = 0; t < _colData.length; t++) {
     for (const s of ['L','R']) {
       for (let p = 0; p < _colData[t][s].length; p++) {
@@ -1021,31 +1052,24 @@ function placePinnedOfficers() {
     }
   }
 
-  // 把目標格現有的人收集起來（要被替換），來賓格不覆蓋，改找下一個非來賓空格
-  targets.forEach(({ t, s, p }, i) => {
-    if (!_colData[t]) return;
-    // 若目標格是來賓，往後找同欄第一個非來賓格
-    let actualP = p;
-    while (actualP < _colData[t][s].length && _colData[t][s][actualP] && _colData[t][s][actualP]._guest) {
-      actualP++;
+  // 依序為每位幹部找位置：跳過來賓格，已佔用的一般成員收集到 displaced
+  let officerIdx = 0;
+  for (const tIdx of tableOrder) {
+    if (officerIdx >= pinnedSeats.length) break;
+    if (!_colData[tIdx]) continue;
+    for (let p = 0; p < _colData[tIdx].L.length && officerIdx < pinnedSeats.length; p++) {
+      const cur = _colData[tIdx].L[p];
+      if (cur && cur._guest) continue;       // 來賓格跳過
+      if (cur && !cur._guest) displaced.push(cur); // 一般成員被擠走
+      _colData[tIdx].L[p] = pinnedSeats[officerIdx++];
     }
-    if (actualP >= _colData[t][s].length) {
-      // 找不到，放到 displaced 讓後面找空位
-      displaced.push(pinnedSeats[i]);
-      return;
-    }
-    const cur = _colData[t][s][actualP];
-    if (cur && !cur._guest) displaced.push(cur);
-    _colData[t][s][actualP] = pinnedSeats[i] || null;
-  });
+  }
 
-  // 把被踢出的人填入空格（從前往後找）
+  // 被擠走的人填到空格（從前往後找）
   for (let t = 0; t < _colData.length && displaced.length; t++) {
     for (const s of ['L','R']) {
       for (let p = 0; p < _colData[t][s].length && displaced.length; p++) {
-        if (!_colData[t][s][p]) {
-          _colData[t][s][p] = displaced.shift();
-        }
+        if (!_colData[t][s][p]) _colData[t][s][p] = displaced.shift();
       }
     }
   }
@@ -1158,9 +1182,10 @@ function shuffle() {
   if (_pinOfficers) placePinnedOfficers(); // 固定幹部填入保留格
   _selectedEl = null;
 
-  // 幹部席（含代理功能）
+  // 幹部席（含代理功能）+ 傳麥手
   document.getElementById('pres-R').innerHTML = '';
   renderSpecialSeats();
+  renderMicSeats();
 
   const grid = document.getElementById('tablesGrid');
   grid.innerHTML = _colData.map((c, i) => renderTable(i + 1, c)).join('');
