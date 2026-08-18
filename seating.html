@@ -715,6 +715,8 @@ function saveChapter() {
 }
 
 function loadChapter() {
+  // 若 URL 有指定分會代號且不是 'default'，預設用代號當名稱
+  if (_chapterKey !== 'default') _chapterName = _chapterKey;
   const raw = localStorage.getItem(_storageKey());
   if (!raw) return;
   try {
