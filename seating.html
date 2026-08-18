@@ -430,6 +430,120 @@ body {
   font-size: .62rem; color: #cbd5e1; text-align: center; padding: 4px 0;
 }
 
+/* ── 設定 Modal ── */
+.settings-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 10000; display: flex; align-items: center; justify-content: center;
+}
+.settings-box {
+  background: white; border-radius: 20px;
+  box-shadow: 0 12px 60px rgba(0,0,0,.3);
+  width: 640px; max-width: 95vw; max-height: 88vh;
+  display: flex; flex-direction: column;
+  font-family: 'Noto Sans TC', sans-serif;
+  overflow: hidden;
+}
+.settings-header {
+  background: linear-gradient(135deg, #ea580c, #f97316);
+  padding: 16px 20px; display: flex; align-items: center; gap: 10px;
+  color: white; flex-shrink: 0;
+}
+.settings-header h2 { font-size: 1.1rem; font-weight: 800; flex: 1; }
+.settings-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,.25); border: none; color: white;
+  font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.settings-tabs {
+  display: flex; border-bottom: 1.5px solid #f1f5f9;
+  padding: 0 16px; background: #fafafa; flex-shrink: 0;
+}
+.settings-tab {
+  padding: 10px 16px; font-size: .82rem; font-weight: 700;
+  color: #94a3b8; cursor: pointer; border-bottom: 2.5px solid transparent;
+  margin-bottom: -1.5px; transition: all .15s; white-space: nowrap;
+}
+.settings-tab.active { color: #ea580c; border-bottom-color: #ea580c; }
+.settings-body { flex: 1; overflow-y: auto; padding: 20px; }
+.settings-footer {
+  padding: 12px 20px; border-top: 1.5px solid #f1f5f9;
+  display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  background: #fafafa;
+}
+.s-btn {
+  padding: 8px 18px; border-radius: 10px; font-size: .82rem;
+  font-weight: 700; cursor: pointer; border: none; transition: all .15s;
+}
+.s-btn-primary { background: linear-gradient(135deg,#f97316,#ea580c); color: white; }
+.s-btn-primary:hover { opacity: .9; }
+.s-btn-ghost { background: white; color: #64748b; border: 1.5px solid #e2e8f0; }
+.s-btn-ghost:hover { background: #f8fafc; }
+.s-btn-danger { background: white; color: #ef4444; border: 1.5px solid #fecaca; }
+.s-btn-danger:hover { background: #fef2f2; }
+.s-field { margin-bottom: 16px; }
+.s-label { font-size: .75rem; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block; }
+.s-input {
+  width: 100%; padding: 9px 12px; border: 1.5px solid #e2e8f0;
+  border-radius: 9px; font-size: .9rem; font-family: inherit; outline: none;
+  font-weight: 600; color: #1e293b; transition: border-color .15s;
+}
+.s-input:focus { border-color: #f97316; }
+.s-hint { font-size: .68rem; color: #94a3b8; margin-top: 4px; line-height: 1.5; }
+.s-section-title {
+  font-size: .8rem; font-weight: 800; color: #f97316;
+  margin: 18px 0 10px; letter-spacing: .04em;
+  padding-bottom: 5px; border-bottom: 1.5px solid #ffedd5;
+}
+.member-table { width: 100%; border-collapse: collapse; }
+.member-table th {
+  font-size: .7rem; font-weight: 800; color: #64748b;
+  padding: 5px 8px; text-align: left; border-bottom: 1.5px solid #f1f5f9;
+}
+.member-table td {
+  padding: 4px 6px; border-bottom: 1px solid #f8fafc; vertical-align: middle;
+}
+.member-table td input {
+  width: 100%; border: 1.5px solid transparent; border-radius: 6px;
+  padding: 4px 7px; font-size: .8rem; font-family: inherit; font-weight: 600;
+  background: transparent; outline: none; color: #1e293b;
+}
+.member-table td input:focus { border-color: #f97316; background: white; }
+.member-table tr:hover td { background: #fffbf7; }
+.member-del-btn {
+  width: 22px; height: 22px; border-radius: 50%; border: none;
+  background: #fee2e2; color: #ef4444; font-size: .75rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-weight: 900; transition: background .1s;
+}
+.member-del-btn:hover { background: #fecaca; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tag-item {
+  display: flex; align-items: center; gap: 4px;
+  background: #f1f5f9; border: 1.5px solid #e2e8f0;
+  border-radius: 20px; padding: 3px 10px;
+  font-size: .78rem; font-weight: 700; color: #334155;
+}
+.tag-remove {
+  cursor: pointer; font-size: .8rem; opacity: .6; line-height: 1;
+  transition: opacity .1s;
+}
+.tag-remove:hover { opacity: 1; color: #ef4444; }
+.tag-add-row { display: flex; gap: 6px; margin-top: 8px; }
+.tag-add-row input {
+  flex: 1; padding: 6px 10px; border: 1.5px solid #e2e8f0;
+  border-radius: 8px; font-size: .8rem; font-family: inherit; outline: none;
+  font-weight: 600;
+}
+.tag-add-row input:focus { border-color: #f97316; }
+.chapter-switch-info {
+  background: #fffbf7; border: 1.5px solid #fdba74; border-radius: 10px;
+  padding: 10px 14px; margin-top: 10px;
+}
+.chapter-switch-info code {
+  background: #ffedd5; border-radius: 4px; padding: 1px 5px;
+  font-size: .78rem; color: #c2410c; font-family: monospace;
+}
+
 /* ── PRINT ── */
 @media print {
   body { background: white; padding: 8px; }
@@ -443,7 +557,7 @@ body {
 </head>
 <body>
 <div class="topbar">
-  <h1>長溙分會 例會座位表</h1>
+  <h1 id="chapterTitle">長溙分會 例會座位表</h1>
   <span class="week-chip" id="weekChip"></span>
   <input type="number" id="sessionInput" min="1" max="30" value="13" hidden>
   <div class="ctrl">
@@ -489,6 +603,7 @@ body {
     <button class="btn btn-shuffle" onclick="shuffle()">🔀 重新排列</button>
     <button class="btn btn-print"   onclick="window.print()">🖨️ 列印</button>
     <button class="btn btn-print"   id="btnPPT" onclick="exportPPT()">📊 匯出PPT</button>
+    <button class="btn btn-print"   onclick="openSettings()" title="分會設定">⚙️ 設定</button>
   </div>
 </div>
 
@@ -552,7 +667,7 @@ body {
 // ══════════════════════════════════════════════
 // ROSTER
 // ══════════════════════════════════════════════
-const ROSTER = [
+let ROSTER = [
   { name:"黃芯慧", role:"主席",      fix:"president" },
   { name:"劉家豪", role:"副主席",    fix:"vp"        },
   { name:"陳宜寧", role:"秘書/財務", fix:"secretary" },
@@ -577,6 +692,46 @@ const MAX_GUESTS  = 12;
 const MAX_MEMBERS = 40;
 let   seatsPerSide = 3;   // 3 = 6人桌；2 = 4人桌
 let   gridCols    = 2;   // 2 或 3 列桌子
+
+// ══════════════════════════════════════════════
+// CHAPTER — 分會資料（localStorage）
+// ══════════════════════════════════════════════
+const _chapterKey = new URLSearchParams(location.search).get('c') || 'default';
+let   _chapterName = '長溙分會';
+
+function _storageKey() { return 'bni_chapter_' + _chapterKey; }
+
+function saveChapter() {
+  const data = {
+    name: _chapterName,
+    roster: ROSTER,
+    specialData: _specialData,
+    pinnedOfficers: PINNED_OFFICERS,
+    micMembers: MIC_MEMBERS,
+    honorMembers: _honorMembers,
+    infoSeats: _infoSeats,
+  };
+  localStorage.setItem(_storageKey(), JSON.stringify(data));
+}
+
+function loadChapter() {
+  const raw = localStorage.getItem(_storageKey());
+  if (!raw) return;
+  try {
+    const d = JSON.parse(raw);
+    if (d.name)          _chapterName    = d.name;
+    if (d.roster)        ROSTER          = d.roster;
+    if (d.specialData)   _specialData    = d.specialData;
+    if (d.pinnedOfficers) PINNED_OFFICERS = d.pinnedOfficers;
+    if (d.micMembers)    MIC_MEMBERS     = d.micMembers;
+    if (d.honorMembers)  _honorMembers   = d.honorMembers;
+    if (d.infoSeats)     _infoSeats      = d.infoSeats;
+  } catch(e) { console.warn('loadChapter error', e); }
+}
+
+function applyChapterUI() {
+  document.getElementById('chapterTitle').textContent = _chapterName + ' 例會座位表';
+}
 
 // ══════════════════════════════════════════════
 // GUEST SLOT FORMULA（依 PPTX 圖片）
@@ -686,8 +841,8 @@ let _proxySet = {};
 
 // 幹部固定左欄功能
 let _pinOfficers = false;
-const PINNED_OFFICERS = ['陳政華','王湘慈','林彥合','黃信樺'];
-const MIC_MEMBERS    = ['劉峻嘉','程韋銘']; // 傳麥手固定，不隨機
+let PINNED_OFFICERS = ['陳政華','王湘慈','林彥合','黃信樺'];
+let MIC_MEMBERS    = ['劉峻嘉','程韋銘']; // 傳麥手固定，不隨機
 
 function togglePinOfficers() {
   _pinOfficers = !_pinOfficers;
@@ -1547,6 +1702,8 @@ function onSizeChange(val) {
   shuffle();
 }
 
+loadChapter();
+applyChapterUI();
 shuffle();
 
 // ══════════════════════════════════════════════
@@ -1693,7 +1850,7 @@ async function exportPPT() {
   });
 
   // ── 標題文字（左）──
-  slide.addText('長溙分會　例會座位表', {
+  slide.addText(_chapterName + '　例會座位表', {
     x: 0.25, y: 0, w: 7.0, h: HDR,
     fontSize: 32, bold: true, color: 'FFFFFF',
     fontFace: 'Microsoft JhengHei', valign: 'middle',
@@ -1711,9 +1868,298 @@ async function exportPPT() {
   slide.addImage({ data: imgData, x: 0, y: HDR, w: SW, h: SH - HDR });
 
   // 5. 匯出
-  const fname = `BNI長溙分會座位圖_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.pptx`;
+  const fname = `BNI${_chapterName}座位圖_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.pptx`;
   await pptx.writeFile({ fileName: fname });
   btn.textContent = '📊 匯出PPT'; btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════
+// 設定 Modal
+// ══════════════════════════════════════════════
+let _settingsTab = 0;
+
+function openSettings() {
+  if (document.getElementById('settingsOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'settings-overlay';
+  overlay.id = 'settingsOverlay';
+  overlay.innerHTML = _buildSettingsHTML();
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeSettings(); });
+  _bindSettingsEvents();
+  switchSettingsTab(0);
+}
+
+function closeSettings() {
+  const el = document.getElementById('settingsOverlay');
+  if (el) document.body.removeChild(el);
+}
+
+function _buildSettingsHTML() {
+  return `<div class="settings-box">
+    <div class="settings-header">
+      <h2>⚙️ 分會設定</h2>
+      <span style="font-size:.75rem;opacity:.8">分會代號：${_chapterKey}</span>
+      <button class="settings-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="settings-tabs">
+      <div class="settings-tab" data-tab="0">📋 基本設定</div>
+      <div class="settings-tab" data-tab="1">👥 會員名單</div>
+      <div class="settings-tab" data-tab="2">🎖 幹部設定</div>
+    </div>
+    <div class="settings-body" id="settingsBody"></div>
+    <div class="settings-footer">
+      <button class="s-btn s-btn-ghost" onclick="_importJSON()" title="從JSON檔案匯入設定">📂 匯入</button>
+      <button class="s-btn s-btn-ghost" onclick="_exportJSON()" title="匯出設定為JSON備份">💾 匯出</button>
+      <div style="flex:1"></div>
+      <button class="s-btn s-btn-ghost" onclick="closeSettings()">取消</button>
+      <button class="s-btn s-btn-primary" onclick="_saveSettings()">✓ 儲存套用</button>
+    </div>
+  </div>`;
+}
+
+function switchSettingsTab(n) {
+  _settingsTab = n;
+  document.querySelectorAll('.settings-tab').forEach((t, i) =>
+    t.classList.toggle('active', i === n));
+  const body = document.getElementById('settingsBody');
+  if (n === 0) body.innerHTML = _tabBasic();
+  else if (n === 1) body.innerHTML = _tabMembers();
+  else if (n === 2) body.innerHTML = _tabOfficers();
+}
+
+function _bindSettingsEvents() {
+  document.querySelectorAll('.settings-tab').forEach(t => {
+    t.addEventListener('click', () => switchSettingsTab(+t.dataset.tab));
+  });
+}
+
+// ── Tab 0: 基本設定 ────────────────────────────
+function _tabBasic() {
+  return `
+    <div class="s-field">
+      <label class="s-label">分會名稱</label>
+      <input class="s-input" id="s_chapterName" value="${_chapterName}" placeholder="e.g. 長旭分會">
+    </div>
+    <div class="chapter-switch-info">
+      <div style="font-size:.78rem;font-weight:700;color:#c2410c;margin-bottom:6px">🔀 切換 / 新建分會</div>
+      <div style="font-size:.72rem;color:#78350f;line-height:1.8">
+        在網址後加 <code>?c=分會代號</code> 即可切換到不同分會的設定。<br>
+        每個分會資料獨立存在瀏覽器。<br>
+        目前代號：<code>${_chapterKey}</code><br>
+        範例：<code>${location.origin}${location.pathname}?c=長旭分會</code>
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="s-section-title">切換到其他分會</div>
+      <div style="display:flex;gap:8px">
+        <input class="s-input" id="s_switchKey" placeholder="輸入分會代號（如 長旭分會）" style="flex:1">
+        <button class="s-btn s-btn-ghost" onclick="_switchChapter()">切換</button>
+      </div>
+      <div class="s-hint">切換後頁面會重新載入，目前分會資料不受影響。</div>
+    </div>`;
+}
+
+function _switchChapter() {
+  const k = document.getElementById('s_switchKey')?.value.trim();
+  if (!k) return alert('請輸入分會代號');
+  const url = new URL(location.href);
+  url.searchParams.set('c', k);
+  location.href = url.toString();
+}
+
+// ── Tab 1: 會員名單 ────────────────────────────
+function _tabMembers() {
+  const rows = ROSTER.map((m, i) =>
+    `<tr data-i="${i}">
+      <td><input value="${_esc(m.name)}" data-field="name" data-i="${i}" onchange="_rosterEdit(${i},'name',this.value)"></td>
+      <td><input value="${_esc(m.role)}" data-field="role" data-i="${i}" onchange="_rosterEdit(${i},'role',this.value)"></td>
+      <td style="width:32px;text-align:center">
+        <button class="member-del-btn" onclick="_rosterDel(${i})" title="刪除">✕</button>
+      </td>
+    </tr>`
+  ).join('');
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:.8rem;color:#64748b;font-weight:600">共 ${ROSTER.length} 位會員</span>
+      <button class="s-btn s-btn-primary" onclick="_rosterAdd()" style="padding:5px 14px;font-size:.78rem">＋ 新增</button>
+    </div>
+    <table class="member-table" id="rosterTable">
+      <thead><tr><th>姓名</th><th>職稱</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="s-hint" style="margin-top:10px">
+      ※ 主席/副主席/秘財 在「幹部設定」頁面修改。<br>
+      ※ 電音控制固定席位（陳裔潔）請直接在頁面上雙擊編輯。
+    </div>`;
+}
+
+function _rosterEdit(i, field, val) { ROSTER[i][field] = val.trim(); }
+
+function _rosterDel(i) {
+  if (!confirm(`確定刪除 ${ROSTER[i].name}？`)) return;
+  ROSTER.splice(i, 1);
+  switchSettingsTab(1);
+}
+
+function _rosterAdd() {
+  ROSTER.push({ name: '新會員', role: '夥伴會員' });
+  switchSettingsTab(1);
+  // 捲到最底讓使用者看到新增的項目
+  setTimeout(() => {
+    const body = document.getElementById('settingsBody');
+    if (body) body.scrollTop = body.scrollHeight;
+  }, 50);
+}
+
+// ── Tab 2: 幹部設定 ────────────────────────────
+function _tabOfficers() {
+  const pinnedTags = PINNED_OFFICERS.map((n,i) =>
+    `<div class="tag-item">${_esc(n)}<span class="tag-remove" onclick="_pinnedDel(${i})">✕</span></div>`
+  ).join('');
+  const micTags = MIC_MEMBERS.map((n,i) =>
+    `<div class="tag-item">${_esc(n)}<span class="tag-remove" onclick="_micDel(${i})">✕</span></div>`
+  ).join('');
+  const honorRows = _honorMembers.map((h,i) =>
+    `<div style="display:flex;gap:8px;margin-bottom:6px">
+      <input class="s-input" value="${_esc(h.name)}" onchange="_honorEdit(${i},'name',this.value)" style="flex:2">
+      <input class="s-input" value="${_esc(h.role)}" onchange="_honorEdit(${i},'role',this.value)" placeholder="職稱" style="flex:1">
+    </div>`
+  ).join('');
+  return `
+    <div class="s-section-title">👑 固定幹部席（主席 / 副主席 / 秘財）</div>
+    ${_specialData.map((d,i) => `
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+        <span style="font-size:.72rem;color:#94a3b8;width:70px;flex-shrink:0">${d.proxyRole.replace('代理','')}</span>
+        <input class="s-input" value="${_esc(d.name)}" onchange="_specialEdit(${i},'name',this.value)" style="flex:2">
+        <input class="s-input" value="${_esc(d.role)}" onchange="_specialEdit(${i},'role',this.value)" style="flex:1.5">
+      </div>`).join('')}
+
+    <div class="s-section-title">📌 固定幹部（左欄，深綠色）</div>
+    <div class="tag-list" id="pinnedTagList">${pinnedTags}</div>
+    <div class="tag-add-row">
+      <input id="s_pinnedInput" placeholder="輸入姓名後按 ＋">
+      <button class="s-btn s-btn-ghost" onclick="_pinnedAdd()" style="padding:6px 14px">＋</button>
+    </div>
+    <div class="s-hint">順序即為固定位置順序（由上到下）。請確認此人也在會員名單中。</div>
+
+    <div class="s-section-title">🎤 傳麥手（淺紫色，固定不隨機）</div>
+    <div class="tag-list" id="micTagList">${micTags}</div>
+    <div class="tag-add-row">
+      <input id="s_micInput" placeholder="輸入姓名後按 ＋">
+      <button class="s-btn s-btn-ghost" onclick="_micAdd()" style="padding:6px 14px">＋</button>
+    </div>
+
+    <div class="s-section-title">🏅 榮譽席（董顧 / 大使，右下角紅色）</div>
+    ${honorRows}`;
+}
+
+function _specialEdit(i, field, val) { _specialData[i][field] = val.trim(); }
+function _honorEdit(i, field, val)   { _honorMembers[i][field] = val.trim(); }
+
+function _pinnedDel(i) {
+  PINNED_OFFICERS.splice(i, 1);
+  document.getElementById('pinnedTagList').innerHTML =
+    PINNED_OFFICERS.map((n,j) =>
+      `<div class="tag-item">${_esc(n)}<span class="tag-remove" onclick="_pinnedDel(${j})">✕</span></div>`
+    ).join('');
+}
+function _pinnedAdd() {
+  const inp = document.getElementById('s_pinnedInput');
+  const n = inp.value.trim();
+  if (!n) return;
+  PINNED_OFFICERS.push(n);
+  inp.value = '';
+  document.getElementById('pinnedTagList').innerHTML =
+    PINNED_OFFICERS.map((nm,j) =>
+      `<div class="tag-item">${_esc(nm)}<span class="tag-remove" onclick="_pinnedDel(${j})">✕</span></div>`
+    ).join('');
+}
+function _micDel(i) {
+  MIC_MEMBERS.splice(i, 1);
+  document.getElementById('micTagList').innerHTML =
+    MIC_MEMBERS.map((n,j) =>
+      `<div class="tag-item">${_esc(n)}<span class="tag-remove" onclick="_micDel(${j})">✕</span></div>`
+    ).join('');
+}
+function _micAdd() {
+  const inp = document.getElementById('s_micInput');
+  const n = inp.value.trim();
+  if (!n) return;
+  MIC_MEMBERS.push(n);
+  inp.value = '';
+  document.getElementById('micTagList').innerHTML =
+    MIC_MEMBERS.map((nm,j) =>
+      `<div class="tag-item">${_esc(nm)}<span class="tag-remove" onclick="_micDel(${j})">✕</span></div>`
+    ).join('');
+}
+
+// ── 儲存 ──────────────────────────────────────
+function _saveSettings() {
+  // 讀取分會名稱
+  const nameInput = document.getElementById('s_chapterName');
+  if (nameInput) _chapterName = nameInput.value.trim() || _chapterName;
+
+  saveChapter();
+  applyChapterUI();
+  closeSettings();
+  renderSpecialSeats();
+  renderMicSeats();
+  shuffle();
+}
+
+// ── 匯出/匯入 JSON ──────────────────────────────
+function _exportJSON() {
+  const data = {
+    chapterKey: _chapterKey,
+    name: _chapterName,
+    roster: ROSTER,
+    specialData: _specialData,
+    pinnedOfficers: PINNED_OFFICERS,
+    micMembers: MIC_MEMBERS,
+    honorMembers: _honorMembers,
+    infoSeats: _infoSeats,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `BNI_${_chapterName}_設定.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function _importJSON() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json';
+  inp.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (d.name)           _chapterName    = d.name;
+        if (d.roster)         ROSTER          = d.roster;
+        if (d.specialData)    _specialData    = d.specialData;
+        if (d.pinnedOfficers) PINNED_OFFICERS = d.pinnedOfficers;
+        if (d.micMembers)     MIC_MEMBERS     = d.micMembers;
+        if (d.honorMembers)   _honorMembers   = d.honorMembers;
+        if (d.infoSeats)      _infoSeats      = d.infoSeats;
+        saveChapter();
+        applyChapterUI();
+        closeSettings();
+        renderSpecialSeats();
+        renderMicSeats();
+        shuffle();
+        alert('匯入成功！');
+      } catch(err) { alert('匯入失敗：' + err.message); }
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+}
+
+function _esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 </script>
 </body>
