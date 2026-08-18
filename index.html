@@ -544,6 +544,56 @@ body {
   font-size: .78rem; color: #c2410c; font-family: monospace;
 }
 
+/* ── DARK MODE ── */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0f172a;
+    background-image:
+      radial-gradient(ellipse at 0% 0%, rgba(251,146,60,.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 100% 100%, rgba(249,115,22,.06) 0%, transparent 50%);
+    color: #e2e8f0;
+  }
+  .legend {
+    background: #1e293b; border-color: #92400e; color: #94a3b8;
+  }
+  .table-card {
+    background: #1e293b; border-color: #334155;
+    box-shadow: 0 2px 12px rgba(0,0,0,.3);
+  }
+  .table-card:hover { border-color: #f97316; }
+  .table-card-label { color: #64748b; }
+  #memberPicker {
+    background: #1e293b; border-color: #334155;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  }
+  #memberPicker .mp-item { color: #e2e8f0; }
+  #memberPicker .mp-item:hover { background: #0f172a; }
+  #memberPicker .mp-title { color: #94a3b8; border-color: #334155; }
+  #memberPicker .mp-cancel { border-color: #334155; }
+  .c-slot-empty { border-color: #334155; }
+  .c-slot-empty:hover { border-color: #f97316; }
+  .settings-box { background: #1e293b; }
+  .settings-tabs { background: #0f172a; border-color: #334155; }
+  .settings-tab { color: #64748b; }
+  .settings-tab.active { color: #f97316; }
+  .settings-footer { background: #0f172a; border-color: #334155; }
+  .s-input { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+  .s-input:focus { border-color: #f97316; }
+  .s-label { color: #94a3b8; }
+  .s-btn-ghost { background: #0f172a; border-color: #334155; color: #94a3b8; }
+  .s-btn-ghost:hover { background: #1e293b; }
+  .member-table th { color: #94a3b8; border-color: #334155; }
+  .member-table td { border-color: #1e293b; }
+  .member-table td input { color: #e2e8f0; }
+  .member-table td input:focus { background: #0f172a; border-color: #f97316; }
+  .member-table tr:hover td { background: #0f172a; }
+  .tag-item { background: #0f172a; border-color: #334155; color: #cbd5e1; }
+  .tag-add-row input { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+  .chapter-switch-info { background: #1a0f00; border-color: #92400e; }
+  .s-section-title { border-color: #92400e; }
+  .proxy-tag { background: linear-gradient(135deg, #450a0a, #3b0a0a); border-color: #7f1d1d; color: #fca5a5; }
+}
+
 /* ── PRINT ── */
 @media print {
   body { background: white; padding: 8px; }
@@ -828,6 +878,7 @@ function buildGuestMap(numTables) {
 // ══════════════════════════════════════════════
 let guestCount  = 0;
 let memberCount = 25;
+let _guestNames = {}; // { 1: '王大明', 2: '李小花', ... } 來賓自訂姓名
 let _guestMap   = [];
 let _memberPool = [];
 let _colData        = [];   // 目前所有桌子的座位資料（可互換）
@@ -1074,8 +1125,39 @@ function mkOval(cls, name, role, t, s, p) {
   return `<div class="oval-wrap">${proxyBtn}<div class="oval ${cls}" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"><span class="n">${name}</span>${sub}</div>${delBtn}</div>`;
 }
 function guestOval(n, t, s, p) {
-  if (t === undefined) return `<div class="oval c-guest"><span class="n">來賓${n}</span><span class="r">來賓</span></div>`;
-  return `<div class="oval-wrap"><div class="oval c-guest" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)"><span class="n">來賓${n}</span><span class="r">來賓</span></div></div>`;
+  const label = _guestNames[n] || `來賓${n}`;
+  const sub   = _guestNames[n] ? '來賓' : '';
+  const dblclick = t !== undefined ? `ondblclick="editGuestName(${n});event.stopPropagation()"` : '';
+  if (t === undefined) return `<div class="oval c-guest"><span class="n">${label}</span><span class="r">來賓</span></div>`;
+  return `<div class="oval-wrap"><div class="oval c-guest" data-t="${t}" data-s="${s}" data-p="${p}" onclick="seatClick(this)" ${dblclick} title="雙擊輸入來賓姓名"><span class="n">${label}</span><span class="r">${sub}</span></div></div>`;
+}
+
+function editGuestName(n) {
+  const cur = _guestNames[n] || '';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:white;border-radius:16px;padding:24px 28px;min-width:260px;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:'Noto Sans TC',sans-serif;">
+    <div style="font-size:1rem;font-weight:800;color:#d97706;margin-bottom:16px">✏️ 來賓${n} 姓名</div>
+    <input id="_gn" type="text" value="${cur}" placeholder="輸入姓名（留空還原預設）"
+      style="display:block;width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:1rem;font-family:inherit;font-weight:700;outline:none;margin-bottom:18px;">
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="_gc" style="padding:8px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:white;cursor:pointer;font-size:.85rem;font-weight:700;color:#64748b">取消</button>
+      <button id="_go" style="padding:8px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#fbbf24,#d97706);color:white;cursor:pointer;font-size:.85rem;font-weight:700">確認</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const inp = overlay.querySelector('#_gn'); inp.focus(); inp.select();
+  const commit = () => {
+    const v = inp.value.trim();
+    if (v) _guestNames[n] = v; else delete _guestNames[n];
+    document.body.removeChild(overlay);
+    // 重繪所有桌子
+    for (let t = 0; t < _colData.length; t++) redrawTableCard(t);
+  };
+  overlay.querySelector('#_go').addEventListener('click', commit);
+  overlay.querySelector('#_gc').addEventListener('click', () => document.body.removeChild(overlay));
+  overlay.addEventListener('click', e => { if (e.target===overlay) document.body.removeChild(overlay); });
+  overlay.addEventListener('keydown', e => { if(e.key==='Enter') commit(); if(e.key==='Escape') document.body.removeChild(overlay); });
 }
 function absentOval(t, s, p) {
   return `<div class="oval" data-t="${t}" data-s="${s}" data-p="${p}" oncontextmenu="seatRemove(this);return false;" title="右鍵還原" style="background:transparent;border:none;box-shadow:none;cursor:default;pointer-events:all;"></div>`;
@@ -1117,22 +1199,16 @@ function buildTableCols(guestMap, shuffledPool, curGuestCount) {
   const totalSlots  = slotCount.reduce((a,b)=>a+b, 0);
   const totalMember = shuffledPool.length;
 
-  // 前 (n-2) 桌貪心坐滿；最後兩桌平均分配剩餘人數
+  // 均勻分配：每桌盡量坐相同比例，避免最後一桌空太多
   let remaining = totalMember;
   const allotted = slotCount.map((slots, i) => {
-    const leftTables = numTables - i;   // 還剩幾桌（含本桌）
-    if (leftTables > 2) {
-      // 貪心：盡量坐滿
-      const take = Math.min(slots, remaining);
-      remaining -= take;
-      return take;
-    } else {
-      // 最後兩桌：平均分配剩餘
-      const share = Math.ceil(remaining / leftTables);
-      const take = Math.min(slots, share, remaining);
-      remaining -= take;
-      return take;
-    }
+    const leftTables = numTables - i;
+    const leftSlots  = slotCount.slice(i).reduce((a,b)=>a+b, 0);
+    // 按比例分配：本桌應得 = remaining × (本桌容量 / 剩餘總容量)
+    const share = leftSlots > 0 ? Math.round(remaining * slots / leftSlots) : 0;
+    const take  = Math.min(slots, Math.max(0, share), remaining);
+    remaining -= take;
+    return take;
   });
 
   let cursor = 0;
@@ -1365,6 +1441,21 @@ function calcNumTables(poolSize) {
 }
 
 // ══════════════════════════════════════════════
+// 會期自動計算（BNI 每週二開會，從當年第一個週二算起）
+// ══════════════════════════════════════════════
+function calcSession(date) {
+  const d = new Date(date);
+  // 找當年第一個週二（weekday=2）
+  const firstDay = new Date(d.getFullYear(), 0, 1);
+  const offset = (2 - firstDay.getDay() + 7) % 7;
+  const firstTue = new Date(d.getFullYear(), 0, 1 + offset);
+  // 計算從第一個週二到今天過了幾週
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const session = Math.floor((d - firstTue) / msPerWeek) + 1;
+  return Math.max(1, session);
+}
+
+// ══════════════════════════════════════════════
 // MAIN SHUFFLE
 // ══════════════════════════════════════════════
 function shuffle() {
@@ -1416,9 +1507,8 @@ function shuffle() {
   renderProxyPanel();
 
   const now = new Date();
-  const session = document.getElementById('sessionInput')?.value || '13';
   document.getElementById('weekChip').textContent =
-    `${now.getFullYear()}年`;
+    `${now.getFullYear()}年 第${calcSession(now)}會期`;
 }
 
 // ══════════════════════════════════════════════
@@ -1797,8 +1887,7 @@ async function exportPPT() {
 
   // 2. 建立 PPT 規格，計算截圖目標尺寸
   const now     = new Date();
-  const session = document.getElementById('sessionInput')?.value || '13';
-  const dateStr = `${now.getFullYear()}年 第${session}會期`;
+  const dateStr = `${now.getFullYear()}年 第${calcSession(now)}會期`;
 
   const pptx  = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
@@ -1953,6 +2042,14 @@ function _tabBasic() {
       </div>
     </div>
     <div style="margin-top:14px">
+      <div class="s-section-title">🔗 分享此分會連結</div>
+      <div style="display:flex;gap:8px">
+        <input class="s-input" id="s_shareUrl" value="${location.href}" readonly style="flex:1;font-size:.75rem;color:#64748b">
+        <button class="s-btn s-btn-primary" onclick="_copyShareLink()" id="s_copyBtn">複製</button>
+      </div>
+      <div class="s-hint">把此連結分享給其他秘書，開啟後自動進入「${_chapterKey}」分會設定。</div>
+    </div>
+    <div style="margin-top:14px">
       <div class="s-section-title">切換到其他分會</div>
       <div style="display:flex;gap:8px">
         <input class="s-input" id="s_switchKey" placeholder="輸入分會代號（如 長旭分會）" style="flex:1">
@@ -1960,6 +2057,14 @@ function _tabBasic() {
       </div>
       <div class="s-hint">切換後頁面會重新載入，目前分會資料不受影響。</div>
     </div>`;
+}
+
+function _copyShareLink() {
+  const url = document.getElementById('s_shareUrl')?.value || location.href;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('s_copyBtn');
+    if (btn) { btn.textContent = '✓ 已複製'; setTimeout(() => btn.textContent = '複製', 2000); }
+  });
 }
 
 function _switchChapter() {
