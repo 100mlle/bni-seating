@@ -5,7 +5,7 @@ import XLSX from "xlsx";
 import { createServer as createViteServer } from "vite";
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
-import { historyDb, goalsDb } from "./db";
+import { historyDb, goalsDb, monthlyLightsDb } from "./db";
 
 dotenv.config();
 
@@ -18,6 +18,7 @@ const SAFE_IMPORT_DIRS = [
   WEEKLY_DATA_DIR,
   path.join(HOME_DIR, "Downloads"),
   path.join(HOME_DIR, "Desktop"),
+  process.cwd(),  // 專案目錄本身（開發環境可直接放）
 ].map(d => path.resolve(d));
 
 function isSafeImportPath(filepath: string): boolean {
@@ -232,6 +233,24 @@ app.get("/api/export", requireAuth, (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="BNI_長溙_備份_${date}.json"`);
     res.setHeader("Content-Type", "application/json");
     res.json(exportData);
+  } catch (e) { serverError(res, e); }
+});
+
+// ── 月度紅綠燈快照 ───────────────────────────────────────────────────────────
+app.get("/api/monthly-lights", (_req, res) => {
+  try { res.json(monthlyLightsDb.getAll()); } catch (e) { serverError(res, e); }
+});
+
+app.post("/api/monthly-lights", requireAuth, (req, res) => {
+  try { monthlyLightsDb.save(req.body); res.json({ ok: true }); } catch (e) { serverError(res, e); }
+});
+
+app.delete("/api/monthly-lights/:id", requireAuth, (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!/^ml-\d+$/.test(id)) return res.status(400).json({ error: "無效 ID" });
+    monthlyLightsDb.delete(id);
+    res.json({ ok: true });
   } catch (e) { serverError(res, e); }
 });
 

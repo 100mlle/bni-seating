@@ -1,33 +1,61 @@
 import { Member, ChapterGoals } from "./types";
 
-// ── 本會期設定（第13屆）────────────────────────────────────────────
-export const CHAPTER_PERIOD = {
-  start: "2026-04-10",
-  end:   "2026-09-30",
-  totalMeetings: 23,           // 第一次例會 4/10，共 23 次
-  holidayDates: [
-    "2026-05-01", // 勞動節
-    "2026-06-19", // 端午節（農曆 5/5）
-    "2026-09-25", // 中秋節（農曆 8/15）
-  ],
-} as const;
+// ── 所有會期定義 ─────────────────────────────────────────────────────
+export const ALL_TERMS = [
+  {
+    id: "13",
+    name: "第13屆 春夏",
+    label: "2026 春夏（4月–9月）",
+    start: "2026-04-10",
+    end:   "2026-09-30",
+    totalMeetings: 23,
+    holidayDates: ["2026-05-01", "2026-06-19", "2026-09-25"],
+  },
+  {
+    id: "14",
+    name: "第14屆 秋冬",
+    label: "2026–2027 秋冬（10月–3月）",
+    start: "2026-10-02",
+    end:   "2027-03-31",
+    totalMeetings: 23,
+    holidayDates: [
+      "2027-01-01",  // 元旦
+      "2027-01-29",  // 農曆春節初一（週五）
+      "2027-02-05",  // 春節假期延伸
+    ],
+  },
+] as const;
 
-// 計算指定日期是第幾次例會（從會期開始的週五，扣除假日）
+export type TermConfig = typeof ALL_TERMS[number];
+
+// 自動偵測目前會期，找不到則取最後一個
+export function getCurrentTerm(): TermConfig {
+  const today = new Date().toISOString().split("T")[0];
+  return (ALL_TERMS.find(t => today >= t.start && today <= t.end) ?? ALL_TERMS[ALL_TERMS.length - 1]) as TermConfig;
+}
+
+// 向後相容：其他元件 import CHAPTER_PERIOD 不需改動
+export const CHAPTER_PERIOD = getCurrentTerm();
+
+// 計算指定日期是第幾次例會（依日期自動找對應會期，扣除假日）
 export function meetingNumberForDate(dateStr: string): number {
+  // 找符合日期的會期；若不在任何會期內則用最近一個
+  const term = ALL_TERMS.find(t => dateStr >= t.start && dateStr <= t.end)
+    ?? (dateStr < ALL_TERMS[0].start ? ALL_TERMS[0] : ALL_TERMS[ALL_TERMS.length - 1]);
   const target = new Date(dateStr + "T23:59:59");
-  const start = new Date(CHAPTER_PERIOD.start);
-  const holidays = new Set<string>(CHAPTER_PERIOD.holidayDates);
+  const start = new Date(term.start);
+  const holidays = new Set<string>(term.holidayDates as readonly string[]);
   let count = 0;
   const d = new Date(start);
   const dayOfWeek = d.getDay();
-  const daysToFri = dayOfWeek <= 5 ? 5 - dayOfWeek : 6;
+  const daysToFri = dayOfWeek <= 5 ? 5 - dayOfWeek : 6; // 找第一個週五
   d.setDate(d.getDate() + daysToFri);
   while (d <= target) {
     const iso = d.toISOString().split("T")[0];
     if (!holidays.has(iso)) count++;
     d.setDate(d.getDate() + 7);
   }
-  return Math.min(count, CHAPTER_PERIOD.totalMeetings);
+  return Math.min(Math.max(count, 1), term.totalMeetings);
 }
 
 // 計算今天是第幾次例會

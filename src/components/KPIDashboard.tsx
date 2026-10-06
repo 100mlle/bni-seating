@@ -602,7 +602,7 @@ export default function KPIDashboard({
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-black text-slate-700">
-                第13屆會期進度　{CHAPTER_PERIOD.start} ～ {CHAPTER_PERIOD.end}
+                {CHAPTER_PERIOD.name}會期進度　{CHAPTER_PERIOD.start} ～ {CHAPTER_PERIOD.end}
               </span>
               <span className="text-xs font-bold text-indigo-600">
                 第 {meetingNow} 次 / 共 {CHAPTER_PERIOD.totalMeetings} 次　剩 {remaining} 次
@@ -925,7 +925,7 @@ export default function KPIDashboard({
           <h3 className="text-base font-black text-slate-800">六組平均積分排行榜</h3>
           <span className="text-xs text-slate-400 ml-auto">
             {accStats.length > 0 ? `累積 ${accStats[0]?.weeksRecorded ?? "?"} 週歷史精算` : "本週 KPI 即時估算"}
-            　·　第13屆 4/10～9/30
+            　·　{CHAPTER_PERIOD.name} {CHAPTER_PERIOD.start.slice(5)}～{CHAPTER_PERIOD.end.slice(5)}
           </span>
         </div>
         <GroupRankChart3D groups={groupRankings} />

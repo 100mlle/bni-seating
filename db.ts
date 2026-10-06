@@ -5,17 +5,26 @@
 import fs from "fs";
 import path from "path";
 
-const CHAPTER_START = "2026-04-10";
-const CHAPTER_END   = "2026-09-30";
+// ── 會期設定（會自動依日期切換）────────────────────────────────────
+const TERMS_DB = [
+  { id: "13", start: "2026-04-10", end: "2026-09-30" },
+  { id: "14", start: "2026-10-02", end: "2027-03-31" },
+];
+function getCurrentTermDates() {
+  const today = new Date().toISOString().split("T")[0];
+  return TERMS_DB.find(t => today >= t.start && today <= t.end) ?? TERMS_DB[TERMS_DB.length - 1];
+}
+const { start: CHAPTER_START, end: CHAPTER_END } = getCurrentTermDates();
 
 const DATA_DIR = process.env.DATA_DIR || process.cwd();
 
 // 確保資料目錄存在
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const RECORDS_FILE = path.join(DATA_DIR, "bni_records.json");
-const SEED_FILE    = path.join(DATA_DIR, "bni_seed.json");
-const GOALS_FILE   = path.join(DATA_DIR, "bni_goals.json");
+const RECORDS_FILE       = path.join(DATA_DIR, "bni_records.json");
+const SEED_FILE          = path.join(DATA_DIR, "bni_seed.json");
+const GOALS_FILE         = path.join(DATA_DIR, "bni_goals.json");
+const MONTHLY_LIGHTS_FILE = path.join(DATA_DIR, "bni_monthly_lights.json");
 
 // ── 通用讀寫工具 ──────────────────────────────────────────────────────────────
 function readJson<T>(filePath: string, fallback: T): T {
@@ -146,20 +155,21 @@ export const historyDb = {
     const seed: AccumulatedSeedEntry[] = [];
     for (const r of rows.slice(5)) {
       if (typeof r[1] !== "string" || !r[1].trim()) continue;
-      if (typeof r[3] !== "number" || r[3] === 0) continue;
-      const weeks = r[3] as number;
+      // r[3] = 週 score (not count); actual weeks = P+A+L+M+S = r[12]+r[13]+r[14]+r[15]+r[16]
+      const weeks = (r[12] || 0) + (r[13] || 0) + (r[14] || 0) + (r[15] || 0) + (r[16] || 0);
+      if (weeks === 0) continue;
       seed.push({
         memberName: r[1].trim(),
         weeksRecorded: weeks,
-        absenceCount: (r[13] || 0) + (r[15] || 0),
-        absenceRuleCount: r[13] || 0,
-        substituteRuleCount: r[16] || 0,
-        lateCount: 0,
+        absenceCount: (r[13] || 0) + (r[15] || 0),  // A + M
+        absenceRuleCount: r[13] || 0,                 // A only
+        substituteRuleCount: r[16] || 0,              // S
+        lateCount: r[14] || 0,                        // L
         totalCeu: r[21] || 0,
         totalTransactionValue: r[22] || 0,
-        avgVisitorsPerMonth: (r[19] || 0) / weeks * 4,
-        avg121PerWeek: (r[20] || 0) / weeks,
-        avgRefPerWeek: (r[17] || 0) / weeks,
+        avgVisitorsPerMonth: weeks > 0 ? (r[19] || 0) / weeks * 4 : 0,
+        avg121PerWeek: weeks > 0 ? (r[20] || 0) / weeks : 0,
+        avgRefPerWeek: weeks > 0 ? (r[17] || 0) / weeks : 0,
       });
     }
     this.saveSeedStats(seed);
@@ -177,4 +187,44 @@ export const goalsDb = {
   },
 };
 
-export default { historyDb, goalsDb };
+// ── 月度紅綠燈快照 ───────────────────────────────────────────────────────────
+export interface MonthlyLightSnapshot {
+  id: string;
+  month: string;       // "2026-10"
+  termId: string;      // "14"
+  termName: string;    // "第14屆 秋冬"
+  weekTitle: string;
+  memberLights: Array<{
+    name: string;
+    score: number;
+    light: string;     // "green"|"yellow"|"red"|"black"
+    attScore: number;
+    refScore: number;
+    otoScore: number;
+    visScore: number;
+    ceuScore: number;
+    tvScore: number;
+  }>;
+  savedAt: number;
+}
+
+export const monthlyLightsDb = {
+  getAll(): MonthlyLightSnapshot[] {
+    return readJson<MonthlyLightSnapshot[]>(MONTHLY_LIGHTS_FILE, [])
+      .sort((a, b) => b.savedAt - a.savedAt);
+  },
+  save(record: MonthlyLightSnapshot): void {
+    const all = readJson<MonthlyLightSnapshot[]>(MONTHLY_LIGHTS_FILE, []);
+    const idx = all.findIndex(r => r.id === record.id);
+    if (idx >= 0) all[idx] = record;
+    else all.unshift(record);
+    writeJson(MONTHLY_LIGHTS_FILE, all.slice(0, 24));
+  },
+  delete(id: string): void {
+    const all = readJson<MonthlyLightSnapshot[]>(MONTHLY_LIGHTS_FILE, [])
+      .filter(r => r.id !== id);
+    writeJson(MONTHLY_LIGHTS_FILE, all);
+  },
+};
+
+export default { historyDb, goalsDb, monthlyLightsDb };

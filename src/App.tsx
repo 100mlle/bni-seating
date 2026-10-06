@@ -11,18 +11,19 @@ import LineMessagePanel from "./components/LineMessagePanel";
 import CommitteeMeetingPanel from "./components/CommitteeMeetingPanel";
 import AlertPanel from "./components/AlertPanel";
 import VisitorTracker from "./components/VisitorTracker";
+import TrafficLightPanel from "./components/TrafficLightPanel";
 
 import {
   Sliders, BarChart3, Presentation, Sparkles, FileText,
   MessageCircle, Bookmark, Heart, Save, Clock, Users, ShieldAlert, Download, UserCheck,
-  CalendarDays, TrendingUp, ChevronRight
+  CalendarDays, TrendingUp, ChevronRight, TrafficCone
 } from "lucide-react";
 import { AccumulatedStats } from "./types";
 
 const MAX_WEEKS = 26;
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"input" | "dashboard" | "slides" | "ai" | "line" | "alert" | "committee" | "guidelines" | "visitors">("input");
+  const [activeTab, setActiveTab] = useState<"input" | "dashboard" | "slides" | "ai" | "line" | "alert" | "committee" | "guidelines" | "visitors" | "traffic">("input");
   const [accStats, setAccStats] = useState<AccumulatedStats[]>([]);
 
   const [weekTitle, setWeekTitle] = useState(() => {
@@ -56,9 +57,12 @@ export default function App() {
           const latest = sliced[0];
           setMembers(latest.members);
           if (latest.committeeText) setCommitteeText(latest.committeeText);
-          const n = meetingNumberForDate(latest.date);
-          const mmdd = latest.date.slice(5).replace("-", "/");
-          setWeekTitle(`第 ${n} 次例會 ${mmdd}`);
+          // 只在最新記錄屬於當前會期時才覆蓋週次標題
+          if (latest.date >= CHAPTER_PERIOD.start && latest.date <= CHAPTER_PERIOD.end) {
+            const n = meetingNumberForDate(latest.date);
+            const mmdd = latest.date.slice(5).replace("-", "/");
+            setWeekTitle(`第 ${n} 次例會 ${mmdd}`);
+          }
         }
       })
       .catch(() => {});
@@ -164,6 +168,7 @@ export default function App() {
     { key: "line", label: "LINE 提醒", icon: MessageCircle },
     { key: "alert", label: "緊急警示", icon: ShieldAlert },
     { key: "committee", label: "月會任務", icon: Users },
+    { key: "traffic", label: "紅綠燈管理", icon: TrafficCone },
     { key: "guidelines", label: "操作指南", icon: FileText },
     { key: "visitors", label: "來賓追蹤", icon: UserCheck },
   ] as const;
@@ -407,6 +412,17 @@ export default function App() {
 
             {activeTab === "visitors" && (
               <VisitorTracker memberNames={members.map(m => `${m.lastName}${m.firstName}`)} />
+            )}
+
+            {activeTab === "traffic" && (
+              <TrafficLightPanel
+                members={members}
+                accStats={accStats}
+                weekTitle={weekTitle}
+                goals={goals}
+                stage={stage}
+                onStageChange={setStage}
+              />
             )}
 
             {activeTab === "guidelines" && (
