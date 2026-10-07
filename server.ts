@@ -237,6 +237,20 @@ app.get("/api/export", requireAuth, (_req, res) => {
   } catch (e) { serverError(res, e); }
 });
 
+app.post("/api/restore", requireAuth, (req, res) => {
+  try {
+    const { records, accumulatedSeed, goals } = req.body;
+    if (Array.isArray(records) && records.length > 0) {
+      records.forEach((r: any) => historyDb.save(r));
+    }
+    if (Array.isArray(accumulatedSeed) && accumulatedSeed.length > 0) {
+      historyDb.saveSeedStats(accumulatedSeed);
+    }
+    if (goals) goalsDb.save(goals);
+    res.json({ ok: true, recordsRestored: Array.isArray(records) ? records.length : 0 });
+  } catch (e) { serverError(res, e); }
+});
+
 // ── 月度紅綠燈快照 ───────────────────────────────────────────────────────────
 app.get("/api/monthly-lights", (_req, res) => {
   try { res.json(monthlyLightsDb.getAll()); } catch (e) { serverError(res, e); }
