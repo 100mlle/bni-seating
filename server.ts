@@ -180,9 +180,10 @@ app.post("/api/history", requireAuth, (req, res) => {
   } catch (e) { serverError(res, e); }
 });
 
-app.get("/api/history/accumulated", (_req, res) => {
+app.get("/api/history/accumulated", (req, res) => {
   try {
-    res.json(historyDb.getAccumulatedStats());
+    const termId = typeof req.query.termId === "string" ? req.query.termId : undefined;
+    res.json(historyDb.getAccumulatedStats(termId));
   } catch (e) { serverError(res, e); }
 });
 

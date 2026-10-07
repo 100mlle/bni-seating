@@ -615,9 +615,9 @@ export default function KPIDashboard({
               />
             </div>
             <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-              <span>4/1 開始</span>
+              <span>{CHAPTER_PERIOD.start.slice(5).replace("-","/")} 開始</span>
               <span className="font-bold text-indigo-500">{pct}% 完成</span>
-              <span>9/30 結束</span>
+              <span>{CHAPTER_PERIOD.end.slice(5).replace("-","/")} 結束</span>
             </div>
           </div>
         );

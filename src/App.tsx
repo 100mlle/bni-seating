@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Member, ChapterGoals, WeeklyRecord, memberName, memberLightAccurate, findAcc } from "./types";
-import { defaultMembers, defaultGoals, defaultCommitteeText, meetingNumberForDate, CHAPTER_PERIOD, currentMeetingNumber } from "./data";
+import { defaultMembers, defaultGoals, defaultCommitteeText, meetingNumberForDate, CHAPTER_PERIOD, ALL_TERMS, currentMeetingNumber } from "./data";
 
 import MemberEditor from "./components/MemberEditor";
 import KPIDashboard from "./components/KPIDashboard";
@@ -40,6 +40,7 @@ export default function App() {
 
   const [history, setHistory] = useState<WeeklyRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyTermFilter, setHistoryTermFilter] = useState<string>("current");
   const [savedToast, setSavedToast] = useState(false);
   const [absenceWarning, setAbsenceWarning] = useState<string[]>([]);
   const [dashboardWeekIdx, setDashboardWeekIdx] = useState(0); // 0 = 本週，1+ = 歷史
@@ -227,7 +228,7 @@ export default function App() {
                 <div className="flex flex-col items-center px-3.5 py-1.5 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
                   <span className="text-slate-300 text-[10px] font-bold tracking-wider">今日</span>
                   <span className="text-white text-sm font-black leading-tight">{todayDisplay}</span>
-                  <span className="text-slate-300/70 text-[9px]">第13屆會期</span>
+                  <span className="text-slate-300/70 text-[9px]">{CHAPTER_PERIOD.name}會期</span>
                 </div>
               </div>
               {/* action buttons */}
@@ -276,35 +277,65 @@ export default function App() {
         {showHistory && (
           <div className="border-t border-white/10 bg-slate-900/60 backdrop-blur-sm">
             <div className="max-w-7xl mx-auto px-4 py-3">
-              <div className="flex items-center gap-3 mb-2.5">
-                <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
-                <p className="text-xs font-bold text-amber-400">歷史週次（點擊載入）— 最近 {MAX_WEEKS} 週</p>
+              <div className="flex items-center gap-3 mb-2.5 flex-wrap">
+                <CalendarDays className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <p className="text-xs font-bold text-amber-400">歷史週次（點擊載入）</p>
+                {/* term filter tabs */}
+                <div className="flex gap-1">
+                  <button onClick={() => setHistoryTermFilter("current")}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold cursor-pointer transition ${historyTermFilter === "current" ? "bg-amber-500 text-rose-950" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}>
+                    本屆
+                  </button>
+                  {ALL_TERMS.filter(t => t.id !== CHAPTER_PERIOD.id).map(t => (
+                    <button key={t.id} onClick={() => setHistoryTermFilter(t.id)}
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold cursor-pointer transition ${historyTermFilter === t.id ? "bg-sky-500 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}>
+                      {t.name}
+                    </button>
+                  ))}
+                  <button onClick={() => setHistoryTermFilter("all")}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold cursor-pointer transition ${historyTermFilter === "all" ? "bg-purple-500 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}>
+                    全部
+                  </button>
+                </div>
                 <button onClick={refreshHistory} className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-sky-600/80 hover:bg-sky-500 text-white text-[11px] font-bold rounded-lg cursor-pointer transition">
                   ↻ 重整
                 </button>
               </div>
-              {history.length === 0 ? (
-                <p className="text-xs text-slate-400 py-2">尚無歷史記錄，點「儲存本週」開始累積。</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 pb-1">
-                  {history.map(r => {
-                    const mNo = meetingNumberForDate(r.date);
-                    return (
-                      <div key={r.id} className="group flex items-stretch bg-white/8 border border-white/12 hover:border-amber-400/50 rounded-xl overflow-hidden transition">
-                        <button onClick={() => loadWeek(r)}
-                          className="px-3.5 py-2 hover:bg-white/15 text-white text-xs cursor-pointer text-left transition">
-                          <span className="text-amber-300 font-black block text-[11px]">第 {mNo} 次例會</span>
-                          <span className="text-slate-400 text-[10px]">{r.date}</span>
-                        </button>
-                        <button onClick={() => deleteWeek(r.id)}
-                          className="px-2.5 opacity-0 group-hover:opacity-100 hover:bg-red-500/40 text-slate-400 hover:text-white text-xs cursor-pointer border-l border-white/10 transition">
-                          ✕
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              {(() => {
+                const filtered = history.filter(r => {
+                  if (historyTermFilter === "all") return true;
+                  if (historyTermFilter === "current") return r.date >= CHAPTER_PERIOD.start && r.date <= CHAPTER_PERIOD.end;
+                  const t = ALL_TERMS.find(x => x.id === historyTermFilter);
+                  return t ? r.date >= t.start && r.date <= t.end : true;
+                });
+                if (history.length === 0) return <p className="text-xs text-slate-400 py-2">尚無歷史記錄，點「儲存本週」開始累積。</p>;
+                if (filtered.length === 0) return <p className="text-xs text-slate-400 py-2">此會期尚無記錄。</p>;
+                return (
+                  <div className="flex flex-wrap gap-2 pb-1">
+                    {filtered.map(r => {
+                      const mNo = meetingNumberForDate(r.date);
+                      const recTerm = ALL_TERMS.find(t => r.date >= t.start && r.date <= t.end);
+                      const isCurrentTerm = recTerm?.id === CHAPTER_PERIOD.id;
+                      return (
+                        <div key={r.id} className="group flex items-stretch bg-white/8 border border-white/12 hover:border-amber-400/50 rounded-xl overflow-hidden transition">
+                          <button onClick={() => loadWeek(r)}
+                            className="px-3.5 py-2 hover:bg-white/15 text-white text-xs cursor-pointer text-left transition">
+                            <span className="text-amber-300 font-black block text-[11px]">第 {mNo} 次例會</span>
+                            <span className="text-slate-400 text-[10px]">{r.date}</span>
+                            {!isCurrentTerm && recTerm && (
+                              <span className="block text-[9px] text-sky-400/80 mt-0.5">{recTerm.name}</span>
+                            )}
+                          </button>
+                          <button onClick={() => deleteWeek(r.id)}
+                            className="px-2.5 opacity-0 group-hover:opacity-100 hover:bg-red-500/40 text-slate-400 hover:text-white text-xs cursor-pointer border-l border-white/10 transition">
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -498,7 +529,7 @@ export default function App() {
               <span className="text-rose-950 font-black text-[9px] leading-none tracking-tighter">BNI</span>
             </div>
             <div>
-              <p className="font-black text-white tracking-wide">BNI 長溙分會 · 第13屆 · 副主席數據平台</p>
+              <p className="font-black text-white tracking-wide">BNI 長溙分會 · {CHAPTER_PERIOD.name} · 副主席數據平台</p>
               <p className="text-slate-500 text-[10px] mt-0.5">會期 {CHAPTER_PERIOD.start} ～ {CHAPTER_PERIOD.end} · 共 {CHAPTER_PERIOD.totalMeetings} 次例會</p>
             </div>
           </div>

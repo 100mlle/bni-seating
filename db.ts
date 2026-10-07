@@ -109,11 +109,16 @@ export const historyDb = {
     return fs.existsSync(SEED_FILE);
   },
 
-  getAccumulatedStats(): AccumulatedSeedEntry[] {
+  getAccumulatedStats(termId?: string): AccumulatedSeedEntry[] {
     const seed = this.getSeedStats();
     const allRows = readJson<WeeklyRecordRow[]>(RECORDS_FILE, []);
 
-    const rows = allRows.filter(r => r.date >= CHAPTER_START && r.date <= CHAPTER_END);
+    let filterStart = CHAPTER_START, filterEnd = CHAPTER_END;
+    if (termId) {
+      const t = TERMS_DB.find(x => x.id === termId);
+      if (t) { filterStart = t.start; filterEnd = t.end; }
+    }
+    const rows = allRows.filter(r => r.date >= filterStart && r.date <= filterEnd);
     if (rows.length === 0) return seed;
 
     const attMap = new Map<string, {
